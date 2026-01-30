@@ -1,0 +1,582 @@
+mention,canonical,types_seen,is_measurement,excluded_reason,mapped,best_cui,num_candidates,top_sab,top_tty,top_match_type,top_matched_key
+2 cm above,2 cm above,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+3  2 cm above,3 2 cm above,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+4  1 cm above the carina,4 1 cm above the carina,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+4  8 cm above,4 8 cm above,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+5  5 cm,5 5 cm,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+6 cm above,6 cm above,ANATOMY::MEASUREMENT::DEFINITELY PRESENT,True,measurement_like,False,,0,,,,
+abdomen,abdomen,ANATOMY::DEFINITELY PRESENT,False,,True,C1281594,5,SNOMEDCT_US,IS,full_norm,abdomen
+abnormalities,abnormalities,OBSERVATION::DEFINITELY ABSENT,False,,True,C0000769,3,MSH,TQ,full_norm,abnormalities
+abnormality,abnormality,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C1704258,3,MTH,PN,full_norm,abnormality
+above,above,ANATOMY::DEFINITELY PRESENT,False,,True,C1282910,5,SNOMEDCT_US,SY,full_norm,above
+acute,acute,OBSERVATION::DEFINITELY ABSENT,False,,True,C1547229,5,HL7V2.5,PT,full_norm,acute
+acute disease,acute disease,OBSERVATION::DEFINITELY ABSENT,False,,True,C0001314,5,SNOMEDCT_US,PT,full_norm,acute disease
+acute findings,acute findings,OBSERVATION::DEFINITELY ABSENT,False,,True,C2607943,2,MSH,PXQ,head,findings
+adjacent,adjacent,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0205117,5,MTH,PN,full_norm,adjacent
+aeration,aeration,OBSERVATION::DEFINITELY PRESENT,False,,True,C2215609,1,MEDCIN,PT,full_norm,aeration
+air,air,OBSERVATION::DEFINITELY PRESENT,False,,True,C0001861,5,MSH,MH,full_norm,air
+air - fluid level,air fluid level,OBSERVATION::DEFINITELY PRESENT,False,,True,C0740844,5,CCPSS,PT,full_can,air fluid level
+airspace,airspace,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+airway,airway,ANATOMY::DEFINITELY PRESENT,False,,True,C0458827,5,SNOMEDCT_US,SY,full_norm,airway
+aligned,aligned,OBSERVATION::DEFINITELY PRESENT,False,,True,C1706765,1,NCI,AD,full_norm,aligned
+alignment,alignment,OBSERVATION::DEFINITELY PRESENT,False,,True,C1706765,4,NCI,PT,full_norm,alignment
+angle,angle,ANATOMY::DEFINITELY PRESENT,False,,True,C0205143,5,SNOMEDCT_US,SY,full_norm,angle
+anterior,anterior,ANATOMY::DEFINITELY PRESENT,False,,True,C0205094,5,CHV,PT,full_norm,anterior
+aortic,aortic,ANATOMY::DEFINITELY PRESENT,False,,True,C0003483,5,CHV,SY,full_norm,aortic
+apex,apex,ANATOMY::DEFINITELY PRESENT,False,,True,C3890171,5,GO,ET,full_norm,apex
+apical,apical,ANATOMY::DEFINITELY PRESENT,False,,True,C0205111,5,CHV,PT,full_norm,apical
+appreciable,appreciable,OBSERVATION::DEFINITELY ABSENT,False,,False,,0,,,,
+appropriate,appropriate,OBSERVATION::DEFINITELY PRESENT,False,,True,C1548787,1,HL7V2.5,PT,full_norm,appropriate
+appropriate position,appropriate position,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,5,SNOMEDCT_US,PT,head,position
+artery,artery,ANATOMY::DEFINITELY PRESENT,False,,True,C0003842,5,SNOMEDCT_US,SY,full_norm,artery
+aspiration,aspiration,OBSERVATION::UNCERTAIN,False,,True,C0349707,5,SNOMEDCT_US,PT,full_norm,aspiration
+aspiration pneumonia,aspiration pneumonia,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0032290,5,SNOMEDCT_US,PT,full_norm,aspiration pneumonia
+asymmetric,asymmetric,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332514,3,CHV,PT,full_norm,asymmetric
+atelectasis,atelectasis,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0004144,5,MEDCIN,PT,full_norm,atelectasis
+atelectatic,atelectatic,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439688,3,SNOMEDCT_US,PT,full_norm,atelectatic
+atrial,atrial,ANATOMY::DEFINITELY PRESENT,False,,True,C0018792,3,NCI,PT,full_norm,atrial
+atrium,atrium,ANATOMY::DEFINITELY PRESENT,False,,True,C1280619,5,SNOMEDCT_US,IS,full_norm,atrium
+atypical infection,atypical infection,OBSERVATION::UNCERTAIN,False,,True,C0009450,5,SNOMEDCT_US,SY,head,infection
+axillary,axillary,ANATOMY::DEFINITELY PRESENT,False,,True,C0004454,5,NCI,PT,full_norm,axillary
+azygos,azygos,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+basal,basal,ANATOMY::DEFINITELY PRESENT,False,,True,C0205112,5,SNOMEDCT_US,PT,full_norm,basal
+base,base,ANATOMY::DEFINITELY PRESENT,False,,True,C1626935,5,SNOMEDCT_US,SY,full_norm,base
+bases,bases,ANATOMY::DEFINITELY PRESENT,False,,True,C1626935,3,SNOMEDCT_US,SY,full_norm,bases
+basilar,basilar,ANATOMY::DEFINITELY PRESENT,False,,True,C1184146,3,CHV,PT,full_norm,basilar
+basis,basis,ANATOMY::DEFINITELY PRESENT,False,,True,C1874451,3,MTH,PN,full_norm,basis
+below,below,ANATOMY::DEFINITELY PRESENT,False,,True,C0542339,5,SNOMEDCT_US,PT,full_norm,below
+below the diaphragm,below the diaphragm,ANATOMY::DEFINITELY PRESENT,False,,True,C1279038,5,SNOMEDCT_US,IS,head,diaphragm
+beneath,beneath,ANATOMY::DEFINITELY PRESENT,False,,True,C0542339,3,SNOMEDCT_US,SY,full_norm,beneath
+bibasilar,bibasilar,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+bilateral,bilateral,ANATOMY::DEFINITELY PRESENT,False,,True,C0238767,5,MTH,PN,full_norm,bilateral
+bilaterally,bilaterally,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+bodies,bodies,ANATOMY::DEFINITELY PRESENT,False,,True,C0242821,1,CHV,SY,full_norm,bodies
+body,body,ANATOMY::DEFINITELY PRESENT,False,,True,C0242821,5,CHV,PT,full_norm,body
+bone,bone,ANATOMY::DEFINITELY PRESENT,False,,True,C1266908,5,SNOMEDCT_US,IS,full_norm,bone
+bony,bony,ANATOMY::DEFINITELY PRESENT,False,,True,C0443157,3,SNOMEDCT_US,PT,full_norm,bony
+border,border,ANATOMY::DEFINITELY PRESENT,False,,True,C0205284,5,SNOMEDCT_US,SY,full_norm,border
+both,both,ANATOMY::DEFINITELY PRESENT,False,,True,C1706086,5,MTH,PN,full_norm,both
+brachiocephalic,brachiocephalic,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+brachiocephalic vein,brachiocephalic vein,ANATOMY::DEFINITELY PRESENT,False,,True,C1278962,5,SNOMEDCT_US,IS,full_norm,brachiocephalic vein
+brachiocephalic veins,brachiocephalic veins,ANATOMY::DEFINITELY PRESENT,False,,True,C0006095,5,MSH,MH,full_norm,brachiocephalic veins
+bronchial,bronchial,ANATOMY::DEFINITELY PRESENT,False,,True,C0205039,5,CHV,PT,full_norm,bronchial
+bullous,bullous,ANATOMY::DEFINITELY PRESENT,False,,True,C0205405,4,SNOMEDCT_US,PT,full_norm,bullous
+calcifications,calcifications,OBSERVATION::DEFINITELY PRESENT,False,,True,C0006660,3,CHV,SY,full_norm,calcifications
+calcified,calcified,OBSERVATION::DEFINITELY PRESENT,False,,True,C0175895,5,NCI,PT,full_norm,calcified
+caliber,caliber,ANATOMY::DEFINITELY PRESENT,False,,True,C1301886,3,SNOMEDCT_US,SY,full_norm,caliber
+cannot be traced,cannot be traced,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+carcinoma,carcinoma,OBSERVATION::DEFINITELY PRESENT,False,,True,C0007097,5,MEDCIN,PT,full_norm,carcinoma
+cardiac,cardiac,ANATOMY::DEFINITELY PRESENT,False,,True,C0018787,5,CCPSS,PT,full_norm,cardiac
+cardiomediastinal,cardiomediastinal,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+cardiomegaly,cardiomegaly,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0018800,5,MEDCIN,PT,full_norm,cardiomegaly
+cardiomyopathy,cardiomyopathy,OBSERVATION::UNCERTAIN,False,,True,C0878544,5,SNOMEDCT_US,PT,full_norm,cardiomyopathy
+cardiophrenic,cardiophrenic,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+cardiopulmonary,cardiopulmonary,ANATOMY::DEFINITELY PRESENT,False,,True,C0553534,5,CHV,PT,full_norm,cardiopulmonary
+cardiovascular,cardiovascular,ANATOMY::DEFINITELY PRESENT,False,,True,C0007226,5,BI,PT,full_norm,cardiovascular
+carina,carina,ANATOMY::DEFINITELY PRESENT,False,,True,C1278906,5,SNOMEDCT_US,IS,full_norm,carina
+carinal,carinal,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+catheter,catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,full_norm,catheter
+cavitary,cavitary,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+cavoatrial junction,cavoatrial junction,ANATOMY::DEFINITELY PRESENT,False,,True,C0205144,3,SNOMEDCT_US,SY,head,junction
+central,central,ANATOMY::DEFINITELY PRESENT,False,,True,C0205099,5,CHV,PT,full_norm,central
+central catheter,central catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+central line,central line,OBSERVATION::DEFINITELY PRESENT,False,,True,C1145640,5,SNOMEDCT_US,SY,full_norm,central line
+cephalization,cephalization,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+cervical,cervical,ANATOMY::DEFINITELY PRESENT,False,,True,C0205064,5,CCPSS,PT,full_norm,cervical
+change,change,OBSERVATION::DEFINITELY ABSENT,False,,True,C0392747,5,CHV,PT,full_norm,change
+changed,changed,OBSERVATION::DEFINITELY ABSENT,False,,True,C0443172,5,SNOMEDCT_US,SY,full_norm,changed
+changes,changes,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0392747,2,CHV,SY,full_norm,changes
+chest,chest,ANATOMY::DEFINITELY PRESENT,False,,True,C0817096,5,CHV,PT,full_norm,chest
+chf,chf,OBSERVATION::DEFINITELY ABSENT,False,,True,C0018802,5,BI,AB,full_norm,chf
+chin,chin,ANATOMY::DEFINITELY PRESENT,False,,True,C1284862,5,SNOMEDCT_US,IS,full_norm,chin
+chronic,chronic,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205191,5,SNOMEDCT_US,PT,full_norm,chronic
+chronic changes,chronic changes,OBSERVATION::UNCERTAIN,False,,True,C0392747,2,CHV,SY,head,changes
+clavicle,clavicle,ANATOMY::DEFINITELY PRESENT,False,,True,C1279070,5,SNOMEDCT_US,IS,full_norm,clavicle
+clavicles,clavicles,ANATOMY::DEFINITELY PRESENT,False,,True,C0008913,2,MSH,PM,full_norm,clavicles
+clear,clear,OBSERVATION::DEFINITELY PRESENT,False,,True,C2963144,5,CHV,PT,full_norm,clear
+clot,clot,OBSERVATION::DEFINITELY PRESENT,False,,True,C0302148,5,SNOMEDCT_US,SY,full_norm,clot
+cluster,cluster,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704332,4,CCPSS,PT,full_norm,cluster
+coexisting,coexisting,OBSERVATION::UNCERTAIN,False,,False,,0,,,,
+collapse,collapse,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332521,5,SNOMEDCT_US,PT,full_norm,collapse
+complete,complete,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205197,5,CHV,PT,full_norm,complete
+completely,completely,OBSERVATION::DEFINITELY PRESENT,False,,True,C4554154,2,SNOMEDCT_US,PT,full_norm,completely
+complication,complication,OBSERVATION::DEFINITELY ABSENT,False,,True,C2362589,5,SNOMEDCT_US,PT,full_norm,complication
+component,component,OBSERVATION::UNCERTAIN,False,,True,C0449432,5,SNOMEDCT_US,PT,full_norm,component
+compression,compression,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332459,5,SNOMEDCT_US,PT,full_norm,compression
+compressive,compressive,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,False,,0,,,,
+compressive atelectasis,compressive atelectasis,OBSERVATION::UNCERTAIN,False,,True,C5780470,5,MDR,LLT,full_norm,compressive atelectasis
+confluent,confluent,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205200,5,SNOMEDCT_US,PT,full_norm,confluent
+congestion,congestion,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0700148,5,CCPSS,PT,full_norm,congestion
+congestive,congestive,OBSERVATION::DEFINITELY PRESENT,False,,True,C0742742,3,CCPSS,PT,full_norm,congestive
+considerably,considerably,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+consolidated,consolidated,OBSERVATION::DEFINITELY PRESENT,False,,True,C0702117,2,CHV,PT,full_norm,consolidated
+consolidation,consolidation,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0702116,5,CHV,PT,full_norm,consolidation
+consolidations,consolidations,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+consolidative,consolidative,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+consolidative opacity,consolidative opacity,OBSERVATION::DEFINITELY PRESENT,False,,True,C1265876,5,SNOMEDCT_US,PT,head,opacity
+contours,contours,ANATOMY::DEFINITELY PRESENT,False,,True,C0876954,2,LCH,PT,full_norm,contours
+contusion,contusion,OBSERVATION::UNCERTAIN,False,,True,C0009938,5,SNOMEDCT_US,PT,full_norm,contusion
+copd,copd,OBSERVATION::DEFINITELY PRESENT,False,,True,C0024117,5,MSH,ET,full_norm,copd
+costophrenic angle,costophrenic angle,ANATOMY::DEFINITELY PRESENT,False,,True,C0230151,5,CHV,PT,full_norm,costophrenic angle
+crest syndrome,crest syndrome,OBSERVATION::DEFINITELY PRESENT,False,,True,C0206138,5,SNOMEDCT_US,PT,full_norm,crest syndrome
+decompensation,decompensation,OBSERVATION::DEFINITELY PRESENT,False,,True,C0231187,5,SNOMEDCT_US,PT,full_norm,decompensation
+decrease,decrease,OBSERVATION::DEFINITELY PRESENT,False,,True,C0547047,5,CHV,PT,full_norm,decrease
+decrease in the amount,decrease in the amount,OBSERVATION::DEFINITELY PRESENT,False,,True,C1265611,5,SNOMEDCT_US,SY,head,amount
+decreased,decreased,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205216,5,CHV,PT,full_norm,decreased
+decreasing,decreasing,OBSERVATION::DEFINITELY PRESENT,False,,True,C0442797,4,MTH,PN,full_norm,decreasing
+dense,dense,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439794,4,SNOMEDCT_US,PT,full_norm,dense
+dense opacification,dense opacification,OBSERVATION::DEFINITELY PRESENT,False,,True,C0449584,4,CHV,PT,head,opacification
+densities,densities,OBSERVATION::DEFINITELY PRESENT,False,,True,C0178587,1,CHV,SY,full_norm,densities
+density,density,OBSERVATION::DEFINITELY PRESENT,False,,True,C0178587,5,SNOMEDCT_US,PT,full_norm,density
+developing infection,developing infection,OBSERVATION::UNCERTAIN,False,,True,C0009450,5,SNOMEDCT_US,SY,head,infection
+devices,devices,OBSERVATION::DEFINITELY PRESENT,False,,True,C0220819,5,MSH,PXQ,full_norm,devices
+dialysis catheter,dialysis catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179747,5,SNOMEDCT_US,PT,full_norm,dialysis catheter
+diameter,diameter,OBSERVATION::DEFINITELY PRESENT,False,,True,C1301886,5,SNOMEDCT_US,PT,full_norm,diameter
+diaphragm,diaphragm,ANATOMY::DEFINITELY PRESENT,False,,True,C1279038,5,SNOMEDCT_US,IS,full_norm,diaphragm
+diffuse,diffuse,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205219,5,CHV,PT,full_norm,diffuse
+diffusely edematous,diffusely edematous,OBSERVATION::DEFINITELY PRESENT,False,,True,C0013604,5,SNOMEDCT_US,SY,head,edematous
+diffusely increased,diffusely increased,OBSERVATION::DEFINITELY PRESENT,False,,True,C4687946,5,NCI,PT,full_norm,diffusely increased
+dilated,dilated,OBSERVATION::DEFINITELY PRESENT,False,,True,C0700124,5,CHV,PT,full_norm,dilated
+diminished,diminished,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205216,5,SNOMEDCT_US,SY,full_norm,diminished
+discrete,discrete,OBSERVATION::DEFINITELY PRESENT,False,,True,C0443299,2,SNOMEDCT_VET,SY,full_norm,discrete
+disease,disease,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0012634,5,CCPSS,PT,full_norm,disease
+displaced,displaced,OBSERVATION::DEFINITELY ABSENT,False,,True,C0012727,4,SNOMEDCT_US,PT,full_norm,displaced
+dissection,dissection,OBSERVATION::DEFINITELY PRESENT,False,,True,C0333288,5,SNOMEDCT_US,SY,full_norm,dissection
+distal,distal,ANATOMY::DEFINITELY PRESENT,False,,True,C0205108,5,SNOMEDCT_US,PT,full_norm,distal
+distal end,distal end,OBSERVATION::DEFINITELY ABSENT,False,,True,C0444930,5,CHV,PT,head,end
+distance,distance,OBSERVATION::DEFINITELY PRESENT,False,,True,C0012751,5,CHV,PT,full_norm,distance
+distension,distension,OBSERVATION::DEFINITELY PRESENT,False,,True,C0012359,2,SNOMEDCT_US,SY,full_norm,distension
+distention,distention,OBSERVATION::DEFINITELY PRESENT,False,,True,C0012359,5,SNOMEDCT_US,SY,full_norm,distention
+disturbed lymphatic drainage,disturbed lymphatic drainage,OBSERVATION::UNCERTAIN,False,,True,C0012621,5,SNOMEDCT_US,SY,head,drainage
+dobbhoff tube,dobbhoff tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0175730,5,SNOMEDCT_US,PT,head,tube
+drainage catheter,drainage catheter,OBSERVATION::DEFINITELY ABSENT,False,,True,C0879005,5,CHV,SY,full_norm,drainage catheter
+drainage tube,drainage tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C1546605,5,HL7V2.5,PT,full_norm,drainage tube
+drains,drains,OBSERVATION::DEFINITELY PRESENT,False,,True,C0180499,1,UMD,PT,full_norm,drains
+dual - channel,dual channel,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439799,5,CHV,PT,head,channel
+dual channel catheter,dual channel catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+duodenum,duodenum,ANATOMY::DEFINITELY PRESENT,False,,True,C1278921,5,SNOMEDCT_US,IS,full_norm,duodenum
+early,early,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C1279919,5,CHV,PT,full_norm,early
+edema,edema,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0013604,5,MTH,PN,full_norm,edema
+edema supine positioning,edema supine positioning,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,5,SNOMEDCT_US,PT,head,positioning
+effusion,effusion,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0013687,5,SNOMEDCT_US,PT,full_norm,effusion
+effusions,effusions,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0013687,3,SNM,HT,full_norm,effusions
+elevated,elevated,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205250,5,SNOMEDCT_US,SY,full_norm,elevated
+elevation,elevation,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439775,5,SNOMEDCT_US,PT,full_norm,elevation
+emphysema,emphysema,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0013990,5,MSH,MH,full_norm,emphysema
+endotracheal,endotracheal,OBSERVATION::DEFINITELY PRESENT,False,,True,C0599554,5,MTH,PN,full_norm,endotracheal
+endotracheal to tube,endotracheal to tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0175730,5,SNOMEDCT_US,PT,head,tube
+endotracheal tube,endotracheal tube,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0336630,5,CCPSS,PT,full_norm,endotracheal tube
+enema catheter,enema catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+engorged,engorged,OBSERVATION::DEFINITELY ABSENT,False,,True,C0700140,2,CHV,PT,full_norm,engorged
+engorgement,engorgement,OBSERVATION::DEFINITELY PRESENT,False,,True,C0020452,5,SNOMEDCT_US,SY,full_norm,engorgement
+enlarged,enlarged,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0442800,5,CHV,PT,full_norm,enlarged
+enlargement,enlargement,OBSERVATION::DEFINITELY PRESENT,False,,True,C2711450,5,SNOMEDCT_US,PT,full_norm,enlargement
+entire left lung,entire left lung,ANATOMY::DEFINITELY PRESENT,False,,True,C1305134,5,MTH,PN,full_norm,entire left lung
+epigastric,epigastric,ANATOMY::DEFINITELY PRESENT,False,,True,C0521440,4,CHV,PT,full_norm,epigastric
+esophageal,esophageal,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C1522619,5,CHV,PT,full_norm,esophageal
+esophagus,esophagus,ANATOMY::DEFINITELY PRESENT,False,,True,C1278919,5,SNOMEDCT_US,IS,full_norm,esophagus
+et,et,OBSERVATION::DEFINITELY PRESENT,False,,True,C0015127,5,MSH,QAB,full_norm,et
+et tip,et tip,OBSERVATION::DEFINITELY PRESENT,False,,True,C3282898,5,MTH,PN,head,tip
+et tube,et tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0175730,5,SNOMEDCT_US,PT,head,tube
+evolving,evolving,OBSERVATION::UNCERTAIN,False,,True,C0332253,4,SNOMEDCT_US,PT,full_norm,evolving
+exacerbation,exacerbation,OBSERVATION::DEFINITELY PRESENT,False,,True,C4086268,1,NCI,PT,full_norm,exacerbation
+extensive,extensive,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205231,5,SNOMEDCT_US,PT,full_norm,extensive
+extensive differential,extensive differential,OBSERVATION::DEFINITELY PRESENT,False,,True,C0443199,5,SNOMEDCT_US,PT,head,differential
+failure,failure,OBSERVATION::DEFINITELY PRESENT,False,,True,C5200924,5,MTH,PN,full_norm,failure
+feeding tube,feeding tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0041281,5,MSH,PM,full_norm,feeding tube
+feeding tubes,feeding tubes,OBSERVATION::DEFINITELY PRESENT,False,,True,C2945625,5,CHV,SY,full_norm,feeding tubes
+fibrosis,fibrosis,OBSERVATION::DEFINITELY PRESENT,False,,True,C0016059,5,CHV,PT,full_norm,fibrosis
+field,field,ANATOMY::DEFINITELY PRESENT,False,,True,C1553496,5,HL7V3.0,PT,full_norm,field
+findings,findings,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C2607943,2,MSH,PXQ,full_norm,findings
+fissure,fissure,ANATOMY::DEFINITELY PRESENT,False,,True,C0332469,5,COSTAR,PT,full_norm,fissure
+fistula,fistula,OBSERVATION::DEFINITELY PRESENT,False,,True,C0595812,5,SNOMEDCT_US,IS,full_norm,fistula
+fluid,fluid,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0444611,5,SNOMEDCT_US,PT,full_norm,fluid
+fluid overload,fluid overload,OBSERVATION::DEFINITELY PRESENT,False,,True,C0546817,5,SNOMEDCT_US,SY,full_norm,fluid overload
+fluid replete state,fluid replete state,OBSERVATION::UNCERTAIN,False,,True,C1301808,5,SNOMEDCT_US,PT,head,state
+focal,focal,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0205234,5,CHV,PT,full_norm,focal
+focal abnormality,focal abnormality,OBSERVATION::DEFINITELY ABSENT,False,,True,C1704258,3,MTH,PN,head,abnormality
+focal consolidation,focal consolidation,OBSERVATION::DEFINITELY ABSENT,False,,True,C0702116,5,CHV,PT,head,consolidation
+focal edema,focal edema,OBSERVATION::DEFINITELY PRESENT,False,,True,C0013604,5,MTH,PN,head,edema
+fracture,fracture,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0016658,5,COSTAR,PT,full_norm,fracture
+fractured,fractured,OBSERVATION::DEFINITELY PRESENT,False,,True,C4554413,4,MTH,PN,full_norm,fractured
+fractures,fractures,OBSERVATION::DEFINITELY PRESENT,False,,True,C0016658,5,ICD9CM,HT,full_norm,fractures
+fragment oriented,fragment oriented,OBSERVATION::DEFINITELY PRESENT,False,,True,C1961028,3,NCI,PT,head,oriented
+free air,free air,OBSERVATION::DEFINITELY ABSENT,False,,True,C0001861,5,MSH,MH,head,air
+fullness,fullness,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439650,3,SNOMEDCT_US,PT,full_norm,fullness
+gastric,gastric,ANATOMY::DEFINITELY PRESENT,False,,True,C1704242,5,NCI,PT,full_norm,gastric
+gastroesophageal,gastroesophageal,ANATOMY::DEFINITELY PRESENT,False,,True,C0744316,2,CCPSS,PT,full_norm,gastroesophageal
+gastroesophageal junction,gastroesophageal junction,ANATOMY::DEFINITELY PRESENT,False,,True,C0014871,5,SNOMEDCT_US,SY,full_norm,gastroesophageal junction
+granulomas,granulomas,OBSERVATION::DEFINITELY PRESENT,False,,True,C0018188,3,MSH,ET,full_norm,granulomas
+greater,greater,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704243,5,CHV,PT,full_norm,greater
+greater fullness,greater fullness,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439650,3,SNOMEDCT_US,PT,head,fullness
+greater opacification,greater opacification,OBSERVATION::DEFINITELY PRESENT,False,,True,C0449584,4,CHV,PT,head,opacification
+ground - glass,ground glass,OBSERVATION::DEFINITELY PRESENT,False,,True,C4697773,5,LNC,LA,full_can,ground glass
+haze,haze,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+hd catheter,hd catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+healed,healed,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205249,4,MTH,PN,full_norm,healed
+heart,heart,ANATOMY::DEFINITELY PRESENT,False,,True,C1281570,5,SNOMEDCT_US,IS,full_norm,heart
+hematoma,hematoma,OBSERVATION::DEFINITELY ABSENT,False,,True,C0018944,5,MTH,PN,full_norm,hematoma
+hemidiaphragm,hemidiaphragm,ANATOMY::DEFINITELY PRESENT,False,,True,C1269843,5,SNOMEDCT_US,OAS,full_norm,hemidiaphragm
+hemithorax,hemithorax,ANATOMY::DEFINITELY PRESENT,False,,True,C1269692,5,SNOMEDCT_US,OAS,full_norm,hemithorax
+hemodialysis catheter,hemodialysis catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179760,5,SNOMEDCT_US,PT,full_norm,hemodialysis catheter
+hemorrhage,hemorrhage,OBSERVATION::DEFINITELY ABSENT,False,,True,C0019080,5,CST,PT,full_norm,hemorrhage
+hemothorax,hemothorax,OBSERVATION::DEFINITELY ABSENT,False,,True,C0019123,5,MEDCIN,PT,full_norm,hemothorax
+hila,hila,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+hilar,hilar,ANATOMY::DEFINITELY PRESENT,False,,True,C0205150,4,SNOMEDCT_US,SY,full_norm,hilar
+hilum,hilum,ANATOMY::DEFINITELY PRESENT,False,,True,C0929176,4,CHV,PT,full_norm,hilum
+hilus,hilus,ANATOMY::DEFINITELY PRESENT,False,,True,C0205150,1,SNOMEDCT_US,IS,full_norm,hilus
+horizontal fissure,horizontal fissure,ANATOMY::DEFINITELY PRESENT,False,,True,C0734040,5,UWDA,PT,full_norm,horizontal fissure
+humerus,humerus,ANATOMY::DEFINITELY PRESENT,False,,True,C1279075,5,SNOMEDCT_US,IS,full_norm,humerus
+hyperinflated,hyperinflated,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+hypertension,hypertension,OBSERVATION::UNCERTAIN,False,,True,C0020538,5,MSH,MH,full_norm,hypertension
+hypochondriac,hypochondriac,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+hypopharynx,hypopharynx,ANATOMY::DEFINITELY PRESENT,False,,True,C1281332,5,SNOMEDCT_US,IS,full_norm,hypopharynx
+ij,ij,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,False,,0,,,,
+improved,improved,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0184511,5,CHV,PT,full_norm,improved
+improvement,improvement,OBSERVATION::DEFINITELY PRESENT,False,,True,C2986411,1,NCI,PT,full_norm,improvement
+in place,in place,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704765,5,SNOMEDCT_US,PT,head,place
+included,included,OBSERVATION::DEFINITELY ABSENT,False,,True,C0332257,1,CHV,SY,full_norm,included
+increase,increase,OBSERVATION::DEFINITELY PRESENT,False,,True,C0442805,5,CHV,PT,full_norm,increase
+increased,increased,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205217,5,CHV,PT,full_norm,increased
+increasing,increasing,OBSERVATION::DEFINITELY PRESENT,False,,True,C0442808,3,SNOMEDCT_US,PT,full_norm,increasing
+infection,infection,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0009450,5,SNOMEDCT_US,SY,full_norm,infection
+infectious,infectious,OBSERVATION::UNCERTAIN,False,,True,C1550587,2,HL7V3.0,PT,full_norm,infectious
+infectious process,infectious process,OBSERVATION::UNCERTAIN,False,,True,C0745283,5,SNOMEDCT_US,PT,full_norm,infectious process
+inferior,inferior,OBSERVATION::DEFINITELY PRESENT,False,,True,C0542339,5,MTH,PN,full_norm,inferior
+inferior vena cava,inferior vena cava,ANATOMY::DEFINITELY PRESENT,False,,True,C1269024,5,SNOMEDCT_US,IS,full_norm,inferior vena cava
+infiltrate,infiltrate,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332448,5,SNOMEDCT_US,SY,full_norm,infiltrate
+injury,injury,OBSERVATION::DEFINITELY ABSENT,False,,True,C3263722,5,SNOMEDCT_US,SY,full_norm,injury
+inlet,inlet,ANATOMY::DEFINITELY PRESENT,False,,True,C3179046,3,MSH,PM,full_norm,inlet
+intact,intact,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205266,5,CHV,PT,full_norm,intact
+internal,internal,ANATOMY::DEFINITELY PRESENT,False,,True,C0205102,5,CHV,PT,full_norm,internal
+internal jugular,internal jugular,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+interspace,interspace,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+interstial,interstial,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+interstitial,interstitial,ANATOMY::DEFINITELY PRESENT,False,,True,C0596790,4,MTH,PN,full_norm,interstitial
+intrathoracic,intrathoracic,ANATOMY::DEFINITELY PRESENT,False,,True,C0595836,3,NCI,PT,full_norm,intrathoracic
+introducer,introducer,OBSERVATION::DEFINITELY PRESENT,False,,True,C0456642,4,SNOMEDCT_US,PT,full_norm,introducer
+introducer catheter,introducer catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179695,5,SPN,PT,full_norm,introducer catheter
+introduction sheet,introduction sheet,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+jugular,jugular,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+junction,junction,ANATOMY::DEFINITELY PRESENT,False,,True,C0205144,3,SNOMEDCT_US,SY,full_norm,junction
+kinking,kinking,OBSERVATION::DEFINITELY PRESENT,False,,True,C0851256,1,SNM,SY,full_norm,kinking
+large,large,OBSERVATION::DEFINITELY PRESENT,False,,True,C0549177,5,CHV,PT,full_norm,large
+large bullae,large bullae,OBSERVATION::DEFINITELY PRESENT,False,,True,C0005758,5,MSH,ET,head,bullae
+large catheter,large catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+large central catheter,large central catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+larger,larger,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704243,5,SNOMEDCT_US,SY,full_norm,larger
+layering,layering,OBSERVATION::DEFINITELY PRESENT,False,,True,C0934502,1,CHV,SY,full_norm,layering
+lead,lead,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0023175,5,MSH,MH,full_norm,lead
+leads,leads,OBSERVATION::DEFINITELY PRESENT,False,,True,C0181586,2,CHV,PT,full_norm,leads
+left,left,ANATOMY::DEFINITELY PRESENT,False,,True,C0205091,5,CHV,PT,full_norm,left
+left - sided,left sided,ANATOMY::DEFINITELY PRESENT,False,,True,C0443246,5,CHV,PT,full_can,left sided
+left basilar,left basilar,ANATOMY::DEFINITELY PRESENT,False,,True,C1184146,3,CHV,PT,head,basilar
+left clavicular,left clavicular,ANATOMY::DEFINITELY PRESENT,False,,True,C0008913,1,SNMI,AD,head,clavicular
+left fourth rib,left fourth rib,ANATOMY::DEFINITELY PRESENT,False,,True,C0502911,5,SNOMEDCT_US,SY,full_norm,left fourth rib
+left lower lobe,left lower lobe,ANATOMY::DEFINITELY PRESENT,False,,True,C1261077,5,CHV,PT,full_norm,left lower lobe
+left sided,left sided,ANATOMY::DEFINITELY PRESENT,False,,True,C0443246,5,CHV,PT,full_norm,left sided
+left upper lobe,left upper lobe,ANATOMY::DEFINITELY PRESENT,False,,True,C1261076,5,CHV,PT,full_norm,left upper lobe
+left upper rib,left upper rib,ANATOMY::DEFINITELY PRESENT,False,,True,C1281577,5,SNOMEDCT_US,IS,head,rib
+left ventricular,left ventricular,ANATOMY::DEFINITELY PRESENT,False,,True,C1522565,4,MTH,PN,head,ventricular
+lesion,lesion,OBSERVATION::DEFINITELY PRESENT,False,,True,C0221198,5,CCPSS,PT,full_norm,lesion
+less pronounced,less pronounced,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+less severe,less severe,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439092,3,CHV,SY,head,less
+line,line,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205132,5,SNOMEDCT_US,SY,full_norm,line
+linear,linear,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205132,5,MTH,PN,full_norm,linear
+lines,lines,OBSERVATION::DEFINITELY PRESENT,False,,True,C1548328,4,HL7V2.5,PT,full_norm,lines
+little cephalization,little cephalization,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+little change,little change,OBSERVATION::DEFINITELY PRESENT,False,,True,C0392747,5,CHV,PT,head,change
+little overall change,little overall change,OBSERVATION::DEFINITELY PRESENT,False,,True,C0392747,5,CHV,PT,head,change
+lobe,lobe,ANATOMY::DEFINITELY PRESENT,False,,True,C0796494,5,MTH,PN,full_norm,lobe
+lobectomy,lobectomy,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023928,5,SNOMEDCT_US,PT,full_norm,lobectomy
+lobes,lobes,ANATOMY::DEFINITELY PRESENT,False,,True,C0796494,1,CHV,SY,full_norm,lobes
+loculated,loculated,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205277,4,SNOMEDCT_US,PT,full_norm,loculated
+loculated fluid,loculated fluid,OBSERVATION::DEFINITELY PRESENT,False,,True,C0444611,5,SNOMEDCT_US,PT,head,fluid
+long - standing,long standing,OBSERVATION::DEFINITELY PRESENT,False,,True,C0231472,5,SNOMEDCT_US,SY,head,standing
+loop,loop,OBSERVATION::DEFINITELY PRESENT,False,,True,C0445022,4,CHV,PT,full_norm,loop
+loss,loss,OBSERVATION::DEFINITELY PRESENT,False,,True,C1517945,3,NCI,PT,full_norm,loss
+low,low,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0205251,5,SNOMEDCT_US,PT,full_norm,low
+lower,lower,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0441994,5,SNOMEDCT_US,PT,full_norm,lower
+lower lobes,lower lobes,ANATOMY::DEFINITELY PRESENT,False,,True,C0796494,1,CHV,SY,head,lobes
+luminal,luminal,ANATOMY::DEFINITELY PRESENT,False,,True,C0524462,5,CHV,PT,full_norm,luminal
+lung,lung,ANATOMY::DEFINITELY PRESENT,False,,True,C1278908,5,SNOMEDCT_US,IS,full_norm,lung
+lungs,lungs,ANATOMY::DEFINITELY PRESENT,False,,True,C0024109,5,SNMI,HT,full_norm,lungs
+lymphatic,lymphatic,OBSERVATION::UNCERTAIN,False,,True,C1522604,5,MTH,PN,full_norm,lymphatic
+major,major,ANATOMY::DEFINITELY PRESENT,False,,True,C0205082,5,SNOMEDCT_US,IS,full_norm,major
+margins,margins,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+markings,markings,OBSERVATION::DEFINITELY PRESENT,False,,True,C0522501,1,CHV,SY,full_norm,markings
+mass,mass,OBSERVATION::DEFINITELY PRESENT,False,,True,C0577559,5,SNOMEDCT_US,PT,full_norm,mass
+medial,medial,ANATOMY::DEFINITELY PRESENT,False,,True,C0205098,5,CHV,PT,full_norm,medial
+median,median,ANATOMY::DEFINITELY PRESENT,False,,True,C2939193,5,SNOMEDCT_US,PT,full_norm,median
+median sternotomy,median sternotomy,OBSERVATION::DEFINITELY PRESENT,False,,True,C1282959,5,SNOMEDCT_US,PT,full_norm,median sternotomy
+mediastinal,mediastinal,ANATOMY::DEFINITELY PRESENT,False,,True,C1522718,5,MTH,PN,full_norm,mediastinal
+mediastinum,mediastinum,ANATOMY::DEFINITELY PRESENT,False,,True,C1278909,5,SNOMEDCT_US,IS,full_norm,mediastinum
+metastases,metastases,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C2939419,5,SNOMEDCT_US,SY,full_norm,metastases
+mid,mid,ANATOMY::DEFINITELY PRESENT,False,,True,C0444598,4,SNOMEDCT_US,PT,full_norm,mid
+mid - thoracic,mid thoracic,ANATOMY::DEFINITELY PRESENT,False,,True,C0817096,5,NCI,PT,head,thoracic
+mid stomach,mid stomach,ANATOMY::DEFINITELY PRESENT,False,,True,C1278920,5,SNOMEDCT_US,IS,head,stomach
+middle,middle,ANATOMY::DEFINITELY PRESENT,False,,True,C0549183,5,CHV,PT,full_norm,middle
+middle parts,middle parts,ANATOMY::DEFINITELY PRESENT,False,,True,C0449719,1,CHV,SY,head,parts
+migrated,migrated,OBSERVATION::DEFINITELY ABSENT,False,,True,C0232902,2,CHV,PT,full_norm,migrated
+migration,migration,OBSERVATION::DEFINITELY PRESENT,False,,True,C1533574,5,SNOMEDCT_US,PT,full_norm,migration
+mild,mild,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C2945599,5,SNOMEDCT_US,PT,full_norm,mild
+mild edema,mild edema,OBSERVATION::DEFINITELY PRESENT,False,,True,C0013604,5,MTH,PN,head,edema
+milder,milder,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+mildly,mildly,OBSERVATION::DEFINITELY PRESENT,False,,True,C2945599,5,SNOMEDCT_US,SY,full_norm,mildly
+minimal,minimal,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0547040,5,CHV,PT,full_norm,minimal
+minimal residual,minimal residual,OBSERVATION::DEFINITELY PRESENT,False,,True,C0543419,5,SNOMEDCT_US,OAS,head,residual
+minimally improved,minimally improved,OBSERVATION::DEFINITELY PRESENT,False,,True,C0184511,5,CHV,PT,head,improved
+minor fissure,minor fissure,ANATOMY::DEFINITELY PRESENT,False,,True,C0332469,5,COSTAR,PT,head,fissure
+mitral valve,mitral valve,ANATOMY::DEFINITELY PRESENT,False,,True,C1269004,5,SNOMEDCT_US,IS,full_norm,mitral valve
+moderate,moderate,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205081,5,CHV,PT,full_norm,moderate
+moderate - sized,moderate sized,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+moderate - to - severe,moderate to severe,OBSERVATION::UNCERTAIN,False,,True,C1299393,3,SNOMEDCT_US,PT,full_can,moderate to severe
+moderately,moderately,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205081,5,SNOMEDCT_US,SY,full_norm,moderately
+monitoring,monitoring,OBSERVATION::DEFINITELY PRESENT,False,,True,C0150369,5,NCI,PT,full_norm,monitoring
+multifocal,multifocal,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205292,5,SNOMEDCT_US,PT,full_norm,multifocal
+multiple,multiple,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439064,5,SNOMEDCT_US,PT,full_norm,multiple
+narrowed,narrowed,OBSERVATION::DEFINITELY ABSENT,False,,True,C0333164,2,CHV,SY,full_norm,narrowed
+narrowing,narrowing,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332463,5,CHV,PT,full_norm,narrowing
+nasogastric,nasogastric,OBSERVATION::DEFINITELY PRESENT,False,,True,C0694637,5,CHV,PT,full_norm,nasogastric
+nasogastric tube,nasogastric tube,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0812428,5,CCPSS,PT,full_norm,nasogastric tube
+near,near,ANATOMY::DEFINITELY PRESENT,False,,True,C0475806,5,SNOMEDCT_US,SY,full_norm,near
+nearly,nearly,OBSERVATION::DEFINITELY PRESENT,False,,True,C3828842,1,NCI,PT,full_norm,nearly
+neo - esophagus,neo esophagus,ANATOMY::DEFINITELY PRESENT,False,,True,C1278919,5,SNOMEDCT_US,IS,head,esophagus
+new,new,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0205314,5,CHV,PT,full_norm,new
+new medication,new medication,OBSERVATION::UNCERTAIN,False,,True,C0013227,5,CCPSS,PT,head,medication
+new opacity,new opacity,OBSERVATION::DEFINITELY ABSENT,False,,True,C1265876,5,SNOMEDCT_US,PT,head,opacity
+new pneumonia,new pneumonia,OBSERVATION::UNCERTAIN,False,,True,C0032285,5,MEDCIN,PT,head,pneumonia
+ng tube,ng tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0175730,5,SNOMEDCT_US,PT,head,tube
+nodal compression,nodal compression,OBSERVATION::UNCERTAIN,False,,True,C0332459,5,SNOMEDCT_US,PT,head,compression
+nodular,nodular,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205297,5,SNOMEDCT_US,PT,full_norm,nodular
+nodular opacities,nodular opacities,OBSERVATION::DEFINITELY PRESENT,False,,True,C0029053,2,CHV,SY,head,opacities
+nodule,nodule,OBSERVATION::DEFINITELY PRESENT,False,,True,C0028259,5,CHV,PT,full_norm,nodule
+nodules,nodules,OBSERVATION::DEFINITELY PRESENT,False,,True,C0028259,4,CHV,SY,full_norm,nodules
+non - healed,non healed,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205301,5,SNOMEDCT_US,PT,full_can,non healed
+nondistended,nondistended,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+nonspecific,nonspecific,OBSERVATION::DEFINITELY PRESENT,False,,True,C0750540,4,CHV,PT,full_norm,nonspecific
+normal,normal,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439166,5,SNOMEDCT_US,SY,full_norm,normal
+normal range,normal range,OBSERVATION::DEFINITELY PRESENT,False,,True,C0086715,5,SNOMEDCT_US,PT,full_norm,normal range
+obscuring,obscuring,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+obstruction,obstruction,OBSERVATION::UNCERTAIN,False,,True,C0028778,5,CCPSS,PT,full_norm,obstruction
+occlusion,occlusion,OBSERVATION::DEFINITELY PRESENT,False,,True,C0028778,5,SNOMEDCT_US,IS,full_norm,occlusion
+old,old,OBSERVATION::DEFINITELY PRESENT,False,,True,C0677546,5,SNOMEDCT_US,IS,full_norm,old
+one,one,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205447,5,MTH,PN,full_norm,one
+opacification,opacification,OBSERVATION::DEFINITELY PRESENT,False,,True,C0449584,4,CHV,PT,full_norm,opacification
+opacified,opacified,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+opacities,opacities,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0029053,2,CHV,SY,full_norm,opacities
+opacity,opacity,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C1265876,5,SNOMEDCT_US,PT,full_norm,opacity
+origin,origin,ANATOMY::DEFINITELY PRESENT,False,,True,C0439659,5,SNOMEDCT_US,PT,full_norm,origin
+osseous,osseous,ANATOMY::DEFINITELY PRESENT,False,,True,C0262950,2,NCI,AD,full_norm,osseous
+osteodystrophy,osteodystrophy,OBSERVATION::DEFINITELY PRESENT,False,,True,C0264009,5,MEDCIN,PT,full_norm,osteodystrophy
+osteosclerosis,osteosclerosis,OBSERVATION::UNCERTAIN,False,,True,C0029464,5,CHV,PT,full_norm,osteosclerosis
+other,other,OBSERVATION::DEFINITELY ABSENT,False,,True,C0220886,5,AIR,HT,full_norm,other
+other mass,other mass,OBSERVATION::UNCERTAIN,False,,True,C0577559,5,SNOMEDCT_US,PT,head,mass
+out of view,out of view,OBSERVATION::DEFINITELY PRESENT,False,,True,C0449911,5,SNOMEDCT_US,PT,head,view
+overinflation,overinflation,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+pacemaker,pacemaker,OBSERVATION::DEFINITELY PRESENT,False,,True,C0030163,5,CHV,PT,full_norm,pacemaker
+pacer,pacer,OBSERVATION::DEFINITELY PRESENT,False,,True,C3890506,4,OMIM,ACR,full_norm,pacer
+pacer defibrillator,pacer defibrillator,OBSERVATION::DEFINITELY PRESENT,False,,True,C0180307,4,SNOMEDCT_US,PT,head,defibrillator
+pacer defibrillator lead,pacer defibrillator lead,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023175,5,MSH,MH,head,lead
+pacer device,pacer device,OBSERVATION::DEFINITELY PRESENT,False,,True,C0699733,5,SNOMEDCT_US,PT,head,device
+pacer lead,pacer lead,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023175,5,MSH,MH,head,lead
+pacer leads,pacer leads,OBSERVATION::DEFINITELY PRESENT,False,,True,C0181586,2,CHV,PT,head,leads
+paramediastinal,paramediastinal,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+parenchymal,parenchymal,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+partially,partially,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+partly,partly,OBSERVATION::UNCERTAIN,False,,False,,0,,,,
+patchy,patchy,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205413,5,SNOMEDCT_US,PT,full_norm,patchy
+patchy opacities,patchy opacities,OBSERVATION::DEFINITELY PRESENT,False,,True,C0029053,2,CHV,SY,head,opacities
+pathologic,pathologic,OBSERVATION::DEFINITELY ABSENT,False,,True,C1521733,4,MTH,PN,full_norm,pathologic
+peribronchial,peribronchial,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+pericardial,pericardial,ANATOMY::DEFINITELY PRESENT,False,,True,C0595696,5,SNOMEDCT_US,OAS,full_norm,pericardial
+perihilar,perihilar,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+periphery,periphery,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+perivascular,perivascular,ANATOMY::DEFINITELY PRESENT,False,,True,C0442165,3,SNOMEDCT_US,PT,full_norm,perivascular
+pic line,pic line,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179740,5,SNOMEDCT_US,SY,full_norm,pic line
+picc line,picc line,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179740,5,SNOMEDCT_US,SY,full_norm,picc line
+pigtail,pigtail,OBSERVATION::DEFINITELY ABSENT,False,,False,,0,,,,
+pigtail catheter,pigtail catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0879203,5,CHV,SY,full_norm,pigtail catheter
+pill fragments,pill fragments,OBSERVATION::UNCERTAIN,False,,True,C0486805,5,CHV,PT,head,fragments
+plethora,plethora,ANATOMY::DEFINITELY PRESENT,False,,True,C0232370,5,SNOMEDCT_US,PT,full_norm,plethora
+pleural,pleural,ANATOMY::DEFINITELY PRESENT,False,,True,C0032226,5,CST,HT,full_norm,pleural
+pleural space,pleural space,ANATOMY::DEFINITELY PRESENT,False,,True,C0178802,5,CHV,PT,full_norm,pleural space
+pneumomediastinum,pneumomediastinum,OBSERVATION::DEFINITELY ABSENT,False,,True,C0025062,5,MSH,ET,full_norm,pneumomediastinum
+pneumonia,pneumonia,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0032285,5,MEDCIN,PT,full_norm,pneumonia
+pneumonitis,pneumonitis,OBSERVATION::UNCERTAIN,False,,True,C0032285,5,SNOMEDCT_US,IS,full_norm,pneumonitis
+pneumoperitoneum,pneumoperitoneum,OBSERVATION::DEFINITELY PRESENT,False,,True,C0032320,5,CHV,PT,full_norm,pneumoperitoneum
+pneumothoraces,pneumothoraces,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+pneumothorax,pneumothorax,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0032326,5,MEDCIN,PT,full_norm,pneumothorax
+points,points,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+position,position,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,5,SNOMEDCT_US,PT,full_norm,position
+positional differences,positional differences,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+post - pyloric position,post pyloric position,OBSERVATION::UNCERTAIN,False,,True,C0733755,5,SNOMEDCT_US,PT,head,position
+post - surgical changes,post surgical changes,OBSERVATION::DEFINITELY PRESENT,False,,True,C0392747,2,CHV,SY,head,changes
+postoperative,postoperative,OBSERVATION::DEFINITELY PRESENT,False,,True,C0032790,5,SNOMEDCT_US,SY,full_norm,postoperative
+pressure,pressure,OBSERVATION::DEFINITELY PRESENT,False,,True,C4284008,5,SNOMEDCT_US,PT,full_norm,pressure
+process,process,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C4521054,5,SNOMEDCT_US,PT,full_norm,process
+projects,projects,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+prominence,prominence,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+prominent,prominent,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205402,5,SNOMEDCT_US,PT,full_norm,prominent
+pronounced,pronounced,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+proper clinical setting,proper clinical setting,OBSERVATION::DEFINITELY PRESENT,False,,True,C0542559,5,CHV,PT,head,setting
+prosthetic device,prosthetic device,OBSERVATION::DEFINITELY PRESENT,False,,True,C1546753,5,HL7V2.5,PT,full_norm,prosthetic device
+proximal,proximal,ANATOMY::DEFINITELY PRESENT,False,,True,C0205107,5,CHV,PT,full_norm,proximal
+proximal right atrium,proximal right atrium,ANATOMY::DEFINITELY PRESENT,False,,True,C1280619,5,SNOMEDCT_US,IS,head,atrium
+pulmonary,pulmonary,ANATOMY::DEFINITELY PRESENT,False,,True,C4522268,5,SNOMEDCT_US,PT,full_norm,pulmonary
+pulmonary hilum,pulmonary hilum,ANATOMY::DEFINITELY PRESENT,False,,True,C0225701,5,FMA,PT,full_norm,pulmonary hilum
+punctate,punctate,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205330,5,SNOMEDCT_US,PT,full_norm,punctate
+pylorus,pylorus,ANATOMY::DEFINITELY PRESENT,False,,True,C0034196,5,CHV,PT,full_norm,pylorus
+quadrant,quadrant,ANATOMY::DEFINITELY PRESENT,False,,True,C1631280,4,NCI,PT,full_norm,quadrant
+radiated,radiated,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332301,1,CHV,SY,full_norm,radiated
+radiation fibrosis,radiation fibrosis,OBSERVATION::DEFINITELY PRESENT,False,,True,C2350622,5,MDR,PT,full_norm,radiation fibrosis
+radiopaque foreign body,radiopaque foreign body,OBSERVATION::DEFINITELY ABSENT,False,,True,C4522195,5,SNOMEDCT_US,PT,head,foreign body
+rapidly,rapidly,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0456962,2,SNOMEDCT_US,PT,full_norm,rapidly
+reaccumulation,reaccumulation,OBSERVATION::DEFINITELY ABSENT,False,,False,,0,,,,
+reduced,reduced,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0392756,5,CHV,PT,full_norm,reduced
+region,region,ANATOMY::DEFINITELY PRESENT,False,,True,C0205147,5,SNOMEDCT_US,PT,full_norm,region
+renal,renal,ANATOMY::DEFINITELY PRESENT,False,,True,C0022646,5,CCPSS,PT,full_norm,renal
+repair,repair,OBSERVATION::UNCERTAIN,False,,True,C4319951,5,MTH,PN,full_norm,repair
+replaced valve,replaced valve,ANATOMY::DEFINITELY PRESENT,False,,True,C3888056,5,SNOMEDCT_US,PT,head,valve
+replacement,replacement,OBSERVATION::DEFINITELY PRESENT,False,,True,C0035139,5,SNOMEDCT_US,SY,full_norm,replacement
+residual,residual,OBSERVATION::DEFINITELY PRESENT,False,,True,C0543419,5,SNOMEDCT_US,OAS,full_norm,residual
+residual opacification,residual opacification,OBSERVATION::DEFINITELY PRESENT,False,,True,C0449584,4,CHV,PT,head,opacification
+resolution,resolution,OBSERVATION::UNCERTAIN,False,,True,C2699488,4,MTH,PN,full_norm,resolution
+retrocardiac,retrocardiac,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+rib,rib,ANATOMY::DEFINITELY PRESENT,False,,True,C1281577,5,SNOMEDCT_US,IS,full_norm,rib
+ribs,ribs,ANATOMY::DEFINITELY PRESENT,False,,True,C0035561,5,MSH,MH,full_norm,ribs
+right,right,ANATOMY::DEFINITELY PRESENT,False,,True,C0205090,5,CHV,PT,full_norm,right
+right - sided,right sided,ANATOMY::DEFINITELY PRESENT,False,,True,C0444532,5,CHV,PT,full_can,right sided
+right atrium,right atrium,ANATOMY::DEFINITELY PRESENT,False,,True,C1269890,5,SNOMEDCT_US,IS,full_norm,right atrium
+right ij,right ij,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+right internal jugular,right internal jugular,ANATOMY::DEFINITELY PRESENT,False,,True,C0501117,2,HL7V2.5,PT,full_norm,right internal jugular
+right lower lobe,right lower lobe,ANATOMY::DEFINITELY PRESENT,False,,True,C1261075,5,CHV,PT,full_norm,right lower lobe
+right lung,right lung,ANATOMY::DEFINITELY PRESENT,False,,True,C0225706,5,CHV,PT,full_norm,right lung
+right main pulmonary artery,right main pulmonary artery,ANATOMY::DEFINITELY PRESENT,False,,True,C0226054,5,SNOMEDCT_US,SY,full_norm,right main pulmonary artery
+right middle,right middle,ANATOMY::DEFINITELY PRESENT,False,,True,C0549183,5,CHV,PT,head,middle
+right shoulder,right shoulder,ANATOMY::DEFINITELY PRESENT,False,,True,C1288639,5,SNOMEDCT_US,IS,full_norm,right shoulder
+right upper,right upper,ANATOMY::DEFINITELY PRESENT,False,,True,C1282910,5,CHV,PT,head,upper
+scarring,scarring,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C2004491,5,SNOMEDCT_US,SY,full_norm,scarring
+sclerotic,sclerotic,OBSERVATION::DEFINITELY PRESENT,False,,True,C0334135,5,SNOMEDCT_US,PT,full_norm,sclerotic
+second large catheter,second large catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+severe,severe,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205082,5,SNOMEDCT_US,PT,full_norm,severe
+severe hyperinflation,severe hyperinflation,OBSERVATION::DEFINITELY PRESENT,False,,True,C0020449,5,SNOMEDCT_US,SY,head,hyperinflation
+severity,severity,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439793,5,SNOMEDCT_US,PT,full_norm,severity
+sheath,sheath,ANATOMY::DEFINITELY PRESENT,False,,True,C0009653,2,MDR,LLT,full_norm,sheath
+sheath position,sheath position,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,5,SNOMEDCT_US,PT,head,position
+shift,shift,OBSERVATION::DEFINITELY PRESENT,False,,True,C0333051,4,SNOMEDCT_US,PT,full_norm,shift
+sideholes,sideholes,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+silhouette,silhouette,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+similar,similar,OBSERVATION::DEFINITELY PRESENT,False,,True,C2348205,1,NCI,AD,full_norm,similar
+single lead,single lead,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023175,5,MSH,MH,head,lead
+size,size,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0456389,5,SNOMEDCT_US,PT,full_norm,size
+skin,skin,ANATOMY::DEFINITELY PRESENT,False,,True,C1278993,5,SNOMEDCT_US,IS,full_norm,skin
+slight interval,slight interval,OBSERVATION::DEFINITELY PRESENT,False,,True,C1272706,5,CHV,PT,head,interval
+slight interval worsening,slight interval worsening,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332271,5,SNOMEDCT_US,PT,head,worsening
+slightly,slightly,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0750482,5,SNOMEDCT_US,PT,full_norm,slightly
+slightly increased,slightly increased,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0205217,5,CHV,PT,head,increased
+slightly larger,slightly larger,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704243,5,SNOMEDCT_US,SY,head,larger
+slightly smaller,slightly smaller,OBSERVATION::DEFINITELY PRESENT,False,,True,C0547044,5,CHV,PT,head,smaller
+small,small,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0700321,5,CHV,PT,full_norm,small
+small effusion,small effusion,OBSERVATION::DEFINITELY PRESENT,False,,True,C0013687,5,SNOMEDCT_US,PT,head,effusion
+small increasing,small increasing,OBSERVATION::DEFINITELY PRESENT,False,,True,C0442808,3,SNOMEDCT_US,PT,head,increasing
+small pocket,small pocket,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+small size,small size,OBSERVATION::DEFINITELY PRESENT,False,,True,C0748864,5,CCPSS,PT,full_norm,small size
+small to moderate,small to moderate,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+smaller,smaller,OBSERVATION::DEFINITELY PRESENT,False,,True,C0547044,5,CHV,PT,full_norm,smaller
+soft tissue,soft tissue,ANATOMY::DEFINITELY PRESENT,False,,True,C0225317,5,MTH,PN,full_norm,soft tissue
+splenic,splenic,ANATOMY::DEFINITELY PRESENT,False,,True,C0037993,3,CHV,SY,full_norm,splenic
+stable,stable,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205360,5,SNOMEDCT_US,PT,full_norm,stable
+standard placement,standard placement,OBSERVATION::DEFINITELY PRESENT,False,,True,C0441587,5,SNOMEDCT_US,OAS,head,placement
+standard placements,standard placements,OBSERVATION::DEFINITELY PRESENT,False,,True,C0441587,1,CHV,SY,head,placements
+standard position,standard position,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,5,SNOMEDCT_US,PT,head,position
+stent,stent,OBSERVATION::DEFINITELY PRESENT,False,,True,C0038257,5,SNOMEDCT_US,PT,full_norm,stent
+stent catheters,stent catheters,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,MH,head,catheters
+stents,stents,OBSERVATION::DEFINITELY PRESENT,False,,True,C0038257,3,MSH,MH,full_norm,stents
+sternal,sternal,ANATOMY::DEFINITELY PRESENT,False,,True,C0038293,1,SNMI,AD,full_norm,sternal
+sternotomy,sternotomy,OBSERVATION::DEFINITELY PRESENT,False,,True,C0185792,5,MSH,MH,full_norm,sternotomy
+stomach,stomach,ANATOMY::DEFINITELY PRESENT,False,,True,C1278920,5,SNOMEDCT_US,IS,full_norm,stomach
+streaky,streaky,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+subclavian,subclavian,ANATOMY::DEFINITELY PRESENT,False,,True,C0589488,3,SNOMEDCT_US,SY,full_norm,subclavian
+subcutaneous,subcutaneous,ANATOMY::DEFINITELY PRESENT,False,,True,C0443315,5,SNOMEDCT_US,PT,full_norm,subcutaneous
+subsegmental,subsegmental,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+substantial,substantial,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,False,,0,,,,
+subtle,subtle,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+superimposed,superimposed,OBSERVATION::UNCERTAIN,False,,False,,0,,,,
+superimposed acute process,superimposed acute process,OBSERVATION::DEFINITELY ABSENT,False,,True,C4521054,5,SNOMEDCT_US,PT,head,process
+superimposed pneumonia,superimposed pneumonia,OBSERVATION::UNCERTAIN,False,,True,C0032285,5,MEDCIN,PT,head,pneumonia
+superimposed process,superimposed process,OBSERVATION::DEFINITELY ABSENT,False,,True,C4521054,5,SNOMEDCT_US,PT,head,process
+superior,superior,ANATOMY::DEFINITELY PRESENT,False,,True,C1282910,5,SNOMEDCT_US,PT,full_norm,superior
+superior cavoatrial junction,superior cavoatrial junction,ANATOMY::DEFINITELY PRESENT,False,,True,C0205144,3,SNOMEDCT_US,SY,head,junction
+superior vena cava,superior vena cava,ANATOMY::DEFINITELY PRESENT,False,,True,C1269023,5,SNOMEDCT_US,IS,full_norm,superior vena cava
+superiorly beyond,superiorly beyond,ANATOMY::DEFINITELY PRESENT,False,,True,C4726539,1,NCI,PT,head,beyond
+support,support,OBSERVATION::DEFINITELY PRESENT,False,,True,C0183683,5,SNOMEDCT_US,PT,full_norm,support
+supraclavicular,supraclavicular,ANATOMY::DEFINITELY PRESENT,False,,True,C0589496,4,SNOMEDCT_US,SY,full_norm,supraclavicular
+surfaces,surfaces,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
+surgical,surgical,OBSERVATION::DEFINITELY PRESENT,False,,True,C0543467,5,SNOMEDCT_US,PT,full_norm,surgical
+svc,svc,ANATOMY::DEFINITELY PRESENT,False,,True,C0231957,4,CHV,SY,full_norm,svc
+swan - catheter,swan catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0085590,5,MSH,ET,head,catheter
+swan - ganz catheter,swan ganz catheter,OBSERVATION::DEFINITELY PRESENT,False,,True,C0179790,5,SNOMEDCT_US,SY,full_can,swan ganz catheter
+termination,termination,OBSERVATION::DEFINITELY PRESENT,False,,True,C1549081,2,HL7V2.5,PT,full_norm,termination
+their respective positions,their respective positions,OBSERVATION::DEFINITELY PRESENT,False,,True,C0733755,1,CHV,SY,head,positions
+thickening,thickening,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205400,5,SNOMEDCT_US,SY,full_norm,thickening
+third,third,ANATOMY::DEFINITELY PRESENT,False,,True,C0205437,5,MTH,PN,full_norm,third
+thoracic,thoracic,ANATOMY::DEFINITELY PRESENT,False,,True,C0817096,5,NCI,PT,full_norm,thoracic
+thoracic spine,thoracic spine,ANATOMY::DEFINITELY PRESENT,False,,True,C1269870,5,SNOMEDCT_US,IS,full_norm,thoracic spine
+thoracocentesis,thoracocentesis,OBSERVATION::DEFINITELY PRESENT,False,,True,C0189477,5,MSH,ET,full_norm,thoracocentesis
+three,three,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205449,5,MTH,PN,full_norm,three
+thyroid,thyroid,ANATOMY::DEFINITELY PRESENT,False,,True,C0040132,5,MSH,ET,full_norm,thyroid
+tip,tip,OBSERVATION::DEFINITELY PRESENT,False,,True,C3282898,5,MTH,PN,full_norm,tip
+top - normal,top normal,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439166,5,SNOMEDCT_US,SY,head,normal
+top normal,top normal,OBSERVATION::DEFINITELY PRESENT,False,,True,C0439166,5,SNOMEDCT_US,SY,head,normal
+trace,trace,OBSERVATION::UNCERTAIN,False,,True,C0442822,5,SNOMEDCT_US,PT,full_norm,trace
+trachea,trachea,ANATOMY::DEFINITELY PRESENT,False,,True,C0347594,5,SNOMEDCT_US,IS,full_norm,trachea
+tracheobronchial,tracheobronchial,ANATOMY::DEFINITELY PRESENT,False,,True,C0450123,4,SNOMEDCT_US,PT,full_norm,tracheobronchial
+tracheostomy tube,tracheostomy tube,OBSERVATION::DEFINITELY PRESENT,False,,True,C0184159,5,SNOMEDCT_US,PT,full_norm,tracheostomy tube
+transvenous,transvenous,"ANATOMY::DEFINITELY PRESENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0522521,4,SNOMEDCT_US,SY,full_norm,transvenous
+transvenous pacer lead,transvenous pacer lead,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023175,5,MSH,MH,head,lead
+treatment - related changes,treatment related changes,OBSERVATION::DEFINITELY PRESENT,False,,True,C0392747,2,CHV,SY,head,changes
+tube,tube,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT",False,,True,C0175730,5,SNOMEDCT_US,PT,full_norm,tube
+tubes,tubes,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704474,4,SNOMEDCT_US,SY,full_norm,tubes
+two,two,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205448,5,MTH,PN,full_norm,two
+two feeding tubes,two feeding tubes,OBSERVATION::DEFINITELY PRESENT,False,,True,C1704474,5,SNOMEDCT_US,SY,head,tubes
+type a,type a,OBSERVATION::DEFINITELY PRESENT,False,,True,C4264487,5,LNC,LA,full_norm,type a
+unchanged,unchanged,"OBSERVATION::DEFINITELY ABSENT,OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0442739,5,SNOMEDCT_US,SY,full_norm,unchanged
+underlying,underlying,OBSERVATION::UNCERTAIN,False,,True,C4722602,2,NCI,PT,full_norm,underlying
+underlying emphysema,underlying emphysema,OBSERVATION::UNCERTAIN,False,,True,C0013990,5,MSH,MH,head,emphysema
+unremarkable,unremarkable,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205307,4,SNOMEDCT_US,SY,full_norm,unremarkable
+upper,upper,ANATOMY::DEFINITELY PRESENT,False,,True,C1282910,5,CHV,PT,full_norm,upper
+upper abdomen,upper abdomen,ANATOMY::DEFINITELY PRESENT,False,,True,C2937240,5,SNOMEDCT_US,SY,full_norm,upper abdomen
+upper lungs,upper lungs,ANATOMY::DEFINITELY PRESENT,False,,True,C0024109,5,SNMI,HT,head,lungs
+upper margin,upper margin,ANATOMY::DEFINITELY PRESENT,False,,True,C1269830,5,SNOMEDCT_US,OAS,head,margin
+upper svc,upper svc,ANATOMY::DEFINITELY PRESENT,False,,True,C0231957,4,CHV,SY,head,svc
+upward retraction,upward retraction,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332523,5,SNOMEDCT_US,PT,head,retraction
+vague,vague,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205408,4,SNOMEDCT_US,PT,full_norm,vague
+valve,valve,ANATOMY::DEFINITELY PRESENT,False,,True,C3888056,5,SNOMEDCT_US,PT,full_norm,valve
+vascular,vascular,ANATOMY::DEFINITELY PRESENT,False,,True,C0392759,5,SNOMEDCT_US,IS,full_norm,vascular
+vascularity,vascularity,ANATOMY::DEFINITELY PRESENT,False,,True,C4068833,1,LNC,LA,full_norm,vascularity
+vasculature,vasculature,ANATOMY::DEFINITELY PRESENT,False,,True,C0005839,5,MSH,XQ,full_norm,vasculature
+vein,vein,ANATOMY::DEFINITELY PRESENT,False,,True,C1278960,5,SNOMEDCT_US,IS,full_norm,vein
+veins,veins,ANATOMY::DEFINITELY PRESENT,False,,True,C0398102,5,ICD10AM,HT,full_norm,veins
+venous,venous,ANATOMY::DEFINITELY PRESENT,False,,True,C0348013,5,CHV,PT,full_norm,venous
+venous pacer lead,venous pacer lead,OBSERVATION::DEFINITELY PRESENT,False,,True,C0023175,5,MSH,MH,head,lead
+ventricle,ventricle,ANATOMY::DEFINITELY PRESENT,False,,True,C0018827,5,SNOMEDCT_US,SY,full_norm,ventricle
+ventricular,ventricular,ANATOMY::DEFINITELY PRESENT,False,,True,C1522565,4,MTH,PN,full_norm,ventricular
+vertebrae,vertebrae,ANATOMY::DEFINITELY PRESENT,False,,True,C0549207,5,MSH,ET,full_norm,vertebrae
+vertebral,vertebral,ANATOMY::DEFINITELY PRESENT,False,,True,C0549207,3,NCI,PT,full_norm,vertebral
+vessels,vessels,ANATOMY::DEFINITELY PRESENT,False,,True,C0005847,4,LNC,LPDN,full_norm,vessels
+visualized changes,visualized changes,OBSERVATION::DEFINITELY PRESENT,False,,True,C0392747,2,CHV,SY,head,changes
+volume,volume,ANATOMY::DEFINITELY PRESENT,False,,True,C1690016,5,SNOMEDCT_US,SY,full_norm,volume
+volumes,volumes,ANATOMY::DEFINITELY PRESENT,False,,True,C0449468,1,CHV,SY,full_norm,volumes
+wall,wall,ANATOMY::DEFINITELY PRESENT,False,,True,C0677535,2,NCI,PT,full_norm,wall
+well inflated,well inflated,OBSERVATION::DEFINITELY PRESENT,False,,False,,0,,,,
+widened,widened,OBSERVATION::DEFINITELY PRESENT,False,,True,C0332464,1,CHV,SY,full_norm,widened
+widening,widening,OBSERVATION::DEFINITELY ABSENT,False,,True,C0332464,3,MTH,PN,full_norm,widening
+widespread,widespread,OBSERVATION::DEFINITELY PRESENT,False,,True,C0205391,5,CHV,PT,full_norm,widespread
+wire,wire,OBSERVATION::DEFINITELY PRESENT,False,,True,C0005978,5,SNOMEDCT_US,SY,full_norm,wire
+wires,wires,OBSERVATION::DEFINITELY PRESENT,False,,True,C0005978,2,SNOMEDCT_US,SY,full_norm,wires
+worse,worse,OBSERVATION::DEFINITELY PRESENT,False,,True,C1279889,5,SNOMEDCT_US,IS,full_norm,worse
+worsened,worsened,OBSERVATION::DEFINITELY PRESENT,False,,True,C1457868,4,SNOMEDCT_US,SY,full_norm,worsened
+worsening,worsening,"OBSERVATION::DEFINITELY PRESENT,OBSERVATION::UNCERTAIN",False,,True,C0332271,5,SNOMEDCT_US,PT,full_norm,worsening
+zone,zone,ANATOMY::DEFINITELY PRESENT,False,,True,C1710706,2,MTH,PN,full_norm,zone
+zones,zones,ANATOMY::DEFINITELY PRESENT,False,,False,,0,,,,
