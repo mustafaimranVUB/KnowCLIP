@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 class UMLSExactMatcher:
-    """Exact-match MRCONSO grounding as implemented in the notebook."""
+    """Exact-match MRCONSO grounding"""
 
     STOP = {
         "no",
