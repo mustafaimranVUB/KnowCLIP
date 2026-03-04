@@ -1,0 +1,104 @@
+"""Tests for evaluation metrics."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from src.evaluation.classification_metrics import ClassificationEvaluator
+from src.evaluation.statistical_tests import (
+    bonferroni_correction,
+    bootstrap_ci,
+    mcnemar_test,
+)
+
+
+class TestClassificationEvaluator:
+    def test_evaluate_returns_per_class(self):
+        evaluator = ClassificationEvaluator()
+        y_true = np.random.randint(0, 2, (100, 14))
+        y_score = np.random.rand(100, 14)
+
+        result = evaluator.evaluate(y_true=y_true, y_score=y_score)
+        assert "per_class" in result
+        assert "macro" in result
+        assert len(result["per_class"]) == 14
+
+    def test_macro_auc_range(self):
+        evaluator = ClassificationEvaluator()
+        y_true = np.random.randint(0, 2, (100, 14))
+        y_score = np.random.rand(100, 14)
+
+        result = evaluator.evaluate(y_true=y_true, y_score=y_score)
+        auc = result["macro"]["auc_roc"]
+        # AUC might be NaN for some random splits, but if computed it should be 0-1
+        if not np.isnan(auc):
+            assert 0.0 <= auc <= 1.0
+
+    def test_perfect_prediction(self):
+        evaluator = ClassificationEvaluator(threshold=0.5)
+        y_true = np.array([[1, 0, 1], [0, 1, 0], [1, 1, 0], [0, 0, 1]])
+        # Perfect scores
+        y_score = y_true.astype(float)
+
+        result = evaluator.evaluate(y_true=y_true, y_score=y_score)
+        assert result["macro"]["f1"] == 1.0
+
+    def test_find_optimal_thresholds(self):
+        evaluator = ClassificationEvaluator()
+        y_true = np.random.randint(0, 2, (100, 3))
+        y_score = np.random.rand(100, 3)
+
+        thresholds = evaluator.find_optimal_thresholds(y_true, y_score)
+        assert len(thresholds) == 3
+        for name, t in thresholds.items():
+            assert 0.1 <= t <= 0.85
+
+
+class TestMcNemarTest:
+    def test_same_predictions(self):
+        y_true = np.array([1, 0, 1, 0, 1])
+        preds_a = np.array([1, 0, 1, 0, 1])
+        preds_b = np.array([1, 0, 1, 0, 1])
+
+        result = mcnemar_test(y_true, preds_a, preds_b)
+        # Same predictions → no discordance
+        assert result["p_value"] >= 0
+
+    def test_different_predictions(self):
+        y_true = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0] * 5)
+        preds_a = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0] * 5)  # perfect
+        preds_b = np.array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1] * 5)  # inverted
+
+        result = mcnemar_test(y_true, preds_a, preds_b)
+        assert "statistic" in result
+        assert "p_value" in result
+
+
+class TestBootstrapCI:
+    def test_returns_ci(self):
+        data = np.random.rand(50, 14)
+        labels = np.random.randint(0, 2, (50, 14))
+
+        def metric_fn(y_true, y_score):
+            return float(np.mean(y_score))
+
+        result = bootstrap_ci(metric_fn, labels, data, n_resamples=100)
+        assert "point_estimate" in result
+        assert "ci_lower" in result
+        assert "ci_upper" in result
+        assert result["ci_lower"] <= result["point_estimate"] <= result["ci_upper"]
+
+
+class TestBonferroniCorrection:
+    def test_correction(self):
+        p_values = [0.01, 0.02, 0.05, 0.10]
+        corrected = bonferroni_correction(p_values)
+        assert len(corrected) == 4
+        # Each result is a dict with original_p, corrected_p, significant
+        assert corrected[0]["corrected_p"] == pytest.approx(0.04, abs=1e-6)
+        assert all(r["corrected_p"] <= 1.0 for r in corrected)
+        # First should be significant (0.01 * 4 = 0.04 < 0.05)
+        assert corrected[0]["significant"] is True
+        # Second should NOT be significant (0.02 * 4 = 0.08 > 0.05)
+        assert corrected[1]["significant"] is False

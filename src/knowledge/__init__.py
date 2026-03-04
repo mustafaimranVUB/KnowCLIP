@@ -1,14 +1,19 @@
-"""
-Phase I Knowledge Graph Module
-Implements entity extraction, UMLS grounding, and knowledge graph construction.
-"""
+"""Knowledge graph extraction, grounding, and graph construction."""
 
-from .extraction import ExtractedEntity, ExtractedTriple, RadGraphExtractor
-from .ontology_grounding import UMLSExactMatcher
+from src.knowledge.extraction import (
+    EntityExtractor,
+    ExtractedEntity,
+    ExtractedTriple,
+)
+from src.knowledge.ontology_grounding import OntologyGrounder
+from src.knowledge.graph_builder import KnowledgeGraphBuilder
+from src.knowledge.scispacy_grounding import ScispaCyGrounder
 
 __all__ = [
+    "EntityExtractor",
     "ExtractedEntity",
     "ExtractedTriple",
-    "RadGraphExtractor",
-    "UMLSExactMatcher",
+    "OntologyGrounder",
+    "KnowledgeGraphBuilder",
+    "ScispaCyGrounder",
 ]

@@ -1,0 +1,92 @@
+# Phase II — Neuro-Symbolic Training (full KG + report generation)
+# Usage: python main.py train --config configs/phase2_neurosymbolic.yaml
+
+model:
+  use_kg: true
+  enable_classification: true
+  enable_report_generation: true
+
+  visual_encoder:
+    backbone_type: "biomedclip"
+    image_size: 224
+    output_dim: 768
+    freeze_backbone: false
+
+  knowledge_encoder:
+    num_gat_layers: 2
+    hidden_channels: 256
+    num_attention_heads: 4
+    dropout: 0.1
+    num_edge_types: 5
+    edge_dim: 64
+    input_dim: 768
+    output_dim: 768
+
+  fusion_module:
+    fusion_type: "cross_attention"
+    num_fusion_layers: 2
+    num_heads: 8
+    hidden_dim: 768
+    use_bottleneck: true
+    bottleneck_dim: 256
+    attention_dropout: 0.1
+    projection_dropout: 0.1
+
+  classification_head:
+    num_classes: 14
+    hidden_dim: 512
+    dropout: 0.3
+    use_batch_norm: true
+
+  report_generation:
+    decoder_type: "transformer"
+    vocab_size: 50257        # GPT-2 tokenizer
+    max_report_length: 128
+    num_decoder_layers: 6
+    decoder_dim: 768
+    num_decoder_heads: 8
+    decoder_ffn_dim: 2048
+    decoder_dropout: 0.1
+    beam_size: 3
+    no_repeat_ngram_size: 3
+
+data:
+  mimic_root: "${MIMIC_ROOT}"
+  reports_root: "${MIMIC_REPORTS}"
+  split_csv: "${MIMIC_ROOT}/mimic-cxr-2.0.0-split.csv"
+  chexpert_csv: "${MIMIC_ROOT}/mimic-cxr-2.0.0-chexpert.csv"
+  kg_artifacts_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+
+training:
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  warmup_steps: 1000
+  num_epochs: 30
+  gradient_clip_norm: 1.0
+  accumulation_steps: 1
+  mixed_precision: true
+  early_stopping_patience: 5
+
+  classification_loss_weight: 1.0
+  generation_loss_weight: 1.0
+
+  seed: 42
+
+  checkpoint_dir: "${VSC_DATA}/knoclip/outputs/checkpoints/neurosymbolic"
+  save_every_n_epochs: 5
+  keep_last_n_checkpoints: 3
+
+  log_dir: "${VSC_DATA}/knoclip/outputs/logs"
+  log_every_n_steps: 100
+  eval_every_n_epochs: 1
+
+kg_pipeline:
+  mrconso_path: "${VSC_DATA}/umls/2025AB/META/MRCONSO.RRF"
+  mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
+  mrrel_path: "${VSC_DATA}/umls/2025AB/META/MRREL.RRF"
+  radgraph_model_type: "modern-radgraph-xl"
+  output_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  top_k_candidates: 5

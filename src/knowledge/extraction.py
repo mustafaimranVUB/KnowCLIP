@@ -1,125 +1,407 @@
-"""RadGraph extraction helpers mirroring the tested notebook pipeline."""
+"""Entity and relation extraction from radiology reports using RadGraph-XL.
+
+Wraps the ``radgraph`` package to extract medical entities (Anatomy,
+Observation) and relations (located_at, modify, suggestive_of,
+associated_with) from free-text radiology reports.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+import logging
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Enums & data-classes
+# ---------------------------------------------------------------------------
+
+class EntityType(str, Enum):
+    """Coarse entity type extracted by RadGraph."""
+    ANATOMY = "anatomy"
+    OBSERVATION = "observation"
+    MEASUREMENT = "measurement"
+
+
+class Certainty(str, Enum):
+    """Certainty qualifier from RadGraph labels."""
+    DEFINITELY_PRESENT = "definitely_present"
+    DEFINITELY_ABSENT = "definitely_absent"
+    UNCERTAIN = "uncertain"
+
+
+class RelationType(str, Enum):
+    """Relation types from RadGraph."""
+    LOCATED_AT = "located_at"
+    MODIFY = "modify"
+    SUGGESTIVE_OF = "suggestive_of"
+    ASSOCIATED_WITH = "associated_with"
+
+
+RELATION_TO_INT: Dict[str, int] = {
+    "located_at": 0,
+    "modify": 1,
+    "suggestive_of": 2,
+    "associated_with": 3,
+}
 
 
 @dataclass
 class ExtractedEntity:
+    """A single entity extracted from a report."""
     text: str
-    etype: str
-    start: Optional[int] = None
-    end: Optional[int] = None
+    entity_type: EntityType
+    certainty: Certainty
+    start_ix: int = -1
+    end_ix: int = -1
+    raw_label: str = ""
+    cui: Optional[str] = None               # filled by grounding
+    cui_candidates: List[str] = field(default_factory=list)
+
+    @property
+    def normalized_text(self) -> str:
+        return normalize_text(self.text)
 
 
 @dataclass
 class ExtractedTriple:
-    head: str
-    rel: str
-    tail: str
+    """A directed relation between two entities."""
+    head_text: str
+    relation: RelationType
+    tail_text: str
+    head_label: str = ""
+    tail_label: str = ""
 
 
-class RadGraphExtractor:
-    """Thin wrapper around the radgraph package with deterministic normalization."""
+# ---------------------------------------------------------------------------
+# Text normalisation
+# ---------------------------------------------------------------------------
 
-    def __init__(self, model_type: str = "radgraph") -> None:
-        try:
-            import radgraph  # type: ignore
+_MEASUREMENT_RE = re.compile(r"\b\d+(\.\d+)?\s*(mm|cm|m|ml|cc|mg|g|l)\b", re.IGNORECASE)
+_HYPHENS_RE = re.compile(r"[-–—/]")
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9 \-]")
+_MULTISPACE_RE = re.compile(r"\s+")
 
-            self.radgraph = radgraph
-        except Exception as exc:
-            raise ImportError(
-                "radgraph is required. Install with `pip install radgraph`."
-            ) from exc
 
+def normalize_text(text: str) -> str:
+    """Lowercase, collapse whitespace, keep hyphens."""
+    t = text.lower().strip()
+    t = _MULTISPACE_RE.sub(" ", t)
+    return t
+
+
+def canonicalize_surface(text: str) -> str:
+    """Aggressive canonicalization: unify hyphens, strip punctuation."""
+    t = normalize_text(text)
+    t = _HYPHENS_RE.sub(" ", t)
+    t = _NON_ALNUM_RE.sub("", t)
+    t = _MULTISPACE_RE.sub(" ", t).strip()
+    return t
+
+
+def is_measurement(text: str) -> bool:
+    """Check if an entity text is a measurement."""
+    return bool(_MEASUREMENT_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
+# RadGraph label parsing
+# ---------------------------------------------------------------------------
+
+def parse_entity_label(label: str) -> Tuple[EntityType, Certainty]:
+    """Parse a RadGraph label string into (EntityType, Certainty).
+
+    Examples::
+        'Anatomy::definitely present'      → (ANATOMY, DEFINITELY_PRESENT)
+        'Observation::definitely absent'   → (OBSERVATION, DEFINITELY_ABSENT)
+        'Observation::Measurement::definitely present' → (MEASUREMENT, DEFINITELY_PRESENT)
+
+    Args:
+        label: Raw label from RadGraph output.
+
+    Returns:
+        Tuple of (EntityType, Certainty).
+    """
+    parts = [p.strip().lower() for p in label.split("::")]
+
+    # Determine entity type
+    if "measurement" in parts:
+        etype = EntityType.MEASUREMENT
+    elif parts[0] == "anatomy":
+        etype = EntityType.ANATOMY
+    elif parts[0] == "observation":
+        etype = EntityType.OBSERVATION
+    else:
+        logger.warning("Unknown entity type in label '%s', defaulting to OBSERVATION", label)
+        etype = EntityType.OBSERVATION
+
+    # Determine certainty from last part
+    cert_str = parts[-1].replace(" ", "_")
+    try:
+        certainty = Certainty(cert_str)
+    except ValueError:
+        logger.warning("Unknown certainty in label '%s', defaulting to DEFINITELY_PRESENT", label)
+        certainty = Certainty.DEFINITELY_PRESENT
+
+    return etype, certainty
+
+
+def parse_relation_type(rel_str: str) -> RelationType:
+    """Parse a relation string from RadGraph.
+
+    Args:
+        rel_str: Relation string (e.g. ``'located_at'``, ``'modify'``).
+
+    Returns:
+        RelationType enum value.
+    """
+    key = rel_str.lower().strip().replace("-", "_").replace(" ", "_")
+    try:
+        return RelationType(key)
+    except ValueError:
+        logger.warning("Unknown relation '%s', defaulting to ASSOCIATED_WITH", rel_str)
+        return RelationType.ASSOCIATED_WITH
+
+
+# ---------------------------------------------------------------------------
+# RadGraph wrapper
+# ---------------------------------------------------------------------------
+
+class EntityExtractor:
+    """Extract entities and relations from radiology reports using RadGraph-XL.
+
+    Parameters:
+        model_type: RadGraph model identifier (default ``'modern-radgraph-xl'``).
+        device: Torch device string/object.
+    """
+
+    def __init__(
+        self,
+        model_type: str = "modern-radgraph-xl",
+        device: Optional[str] = None,
+    ) -> None:
         self.model_type = model_type
-        self._model = None
+        self.device = device
+        self._model: Any = None
 
-    def _get_model(self):
-        """Lazy load the model."""
+    @property
+    def model(self) -> Any:
+        """Lazy-load the RadGraph model."""
         if self._model is None:
-            self._model = self.radgraph.RadGraph(model_type=self.model_type)
+            logger.info("Loading RadGraph model: %s", self.model_type)
+            try:
+                from radgraph import RadGraph  # type: ignore
+
+                kwargs: Dict[str, Any] = {"model_type": self.model_type}
+                if self.device:
+                    kwargs["device"] = self.device
+                self._model = RadGraph(**kwargs)
+            except ImportError:
+                raise ImportError(
+                    "radgraph package not installed.  "
+                    "Install with: pip install radgraph"
+                )
         return self._model
 
-    def infer(self, texts: List[str]) -> Dict[str, Dict[str, Any]]:
-        """Run RadGraph inference for a batch of reports."""
-        model = self._get_model()
-        result = model(texts)
-        return result
+    # ------------------------------------------------------------------
+    # Extraction
+    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _normalize_single(
-        pred: Dict[str, Any],
-    ) -> Tuple[Dict[str, ExtractedEntity], List[ExtractedTriple]]:
-        """Normalize one RadGraph prediction to entities and triples."""
-        entities: Dict[str, ExtractedEntity] = {}
-        raw_relation_tuples: List[Tuple[str, str, str]] = []
+    def extract_batch(
+        self,
+        reports: Sequence[str],
+    ) -> List[Tuple[List[ExtractedEntity], List[ExtractedTriple]]]:
+        """Extract entities and triples from a batch of reports.
 
-        # Get entities from the prediction
-        ent_obj = pred.get("entities")
-        if ent_obj is None or not isinstance(ent_obj, dict):
-            return entities, []
+        Args:
+            reports: Sequence of cleaned report strings.
 
-        def _consume_entity(key: str, payload: Dict[str, Any]) -> None:
-            # Extract text from 'tokens' field
-            text = payload.get("tokens", "")
-            if isinstance(text, list):
-                text = " ".join(text)
-            elif not isinstance(text, str):
-                text = str(text)
+        Returns:
+            List of ``(entities, triples)`` tuples, one per report.
+        """
+        cleaned = [self._clean_report(r) for r in reports]
+        raw_preds = self.model(cleaned)
 
-            # Extract label
-            label = payload.get("label", "UNKNOWN")
+        results: List[Tuple[List[ExtractedEntity], List[ExtractedTriple]]] = []
+        for idx in range(len(cleaned)):
+            key = str(idx)
+            pred = raw_preds.get(key, raw_preds.get(idx, {}))
+            entities, triples = self._normalize_output(pred)
+            results.append((entities, triples))
 
-            # Create entity
-            entities[str(key)] = ExtractedEntity(
-                text=text.strip(),
-                etype=str(label).upper() if label else "UNKNOWN",
-                start=payload.get("start_ix"),
-                end=payload.get("end_ix"),
+        return results
+
+    def extract_single(
+        self,
+        report: str,
+    ) -> Tuple[List[ExtractedEntity], List[ExtractedTriple]]:
+        """Extract entities and triples from a single report."""
+        results = self.extract_batch([report])
+        return results[0]
+
+    # ------------------------------------------------------------------
+    # Output normalisation
+    # ------------------------------------------------------------------
+
+    #: Flag so we only log the raw output structure once (on first call)
+    _logged_raw_structure: bool = False
+
+    def _normalize_output(
+        self,
+        prediction: Dict[str, Any],
+    ) -> Tuple[List[ExtractedEntity], List[ExtractedTriple]]:
+        """Convert raw RadGraph output to structured entities & triples.
+
+        RadGraph returns a dict with ``'entities'`` and ``'relations'``
+        (or similar schema).  The exact structure depends on the
+        radgraph version — we handle the common formats.
+        """
+        # --- One-time diagnostic log to reveal the raw output schema ---
+        if not EntityExtractor._logged_raw_structure:
+            EntityExtractor._logged_raw_structure = True
+            top_keys = list(prediction.keys()) if isinstance(prediction, dict) else type(prediction).__name__
+            raw_ents = prediction.get("entities", {}) if isinstance(prediction, dict) else {}
+            sample_ent_id, sample_ent_data = next(iter(raw_ents.items())) if raw_ents else (None, {})
+            sample_rels = sample_ent_data.get("relations", []) if sample_ent_data else []
+            logger.info(
+                "[RadGraph diagnostic] top-level keys=%s | "
+                "sample entity keys=%s | "
+                "sample entity relations (first 3)=%s",
+                top_keys,
+                list(sample_ent_data.keys()) if sample_ent_data else [],
+                sample_rels[:3],
             )
 
-            # Process relations: [['relation_type', 'target_entity_id'], ...]
-            for rel_item in payload.get("relations", []):
-                if isinstance(rel_item, list) and len(rel_item) == 2:
-                    rtype_raw, tgt_raw = rel_item
-                    raw_relation_tuples.append((str(key), rtype_raw, str(tgt_raw)))
-
-        for k, v in ent_obj.items():
-            if isinstance(v, dict):
-                _consume_entity(k, v)
-
-        # Build triples
+        entities_dict: Dict[str, ExtractedEntity] = {}
         triples: List[ExtractedTriple] = []
 
-        def rel_type_normalize(x: Any) -> str:
-            return str(x).lower().replace(" ", "_").upper()
+        # Parse entities
+        raw_entities = prediction.get("entities", {})
+        for ent_id, ent_data in raw_entities.items():
+            tokens = ent_data.get("tokens", "")
+            label = ent_data.get("label", "")
+            start_ix = ent_data.get("start_ix", -1)
+            end_ix = ent_data.get("end_ix", -1)
 
-        for head_id, rtype_raw, tail_id in raw_relation_tuples:
-            if head_id in entities and tail_id in entities:
-                h_ent = entities[head_id]
-                t_ent = entities[tail_id]
+            etype, certainty = parse_entity_label(label)
+            entity = ExtractedEntity(
+                text=tokens,
+                entity_type=etype,
+                certainty=certainty,
+                start_ix=start_ix,
+                end_ix=end_ix,
+                raw_label=label,
+            )
+            entities_dict[str(ent_id)] = entity
+
+        # Parse relations.
+        # RadGraph (radgraph package) primarily embeds relations *inside* each
+        # entity under the key "relations": [[rel_type, target_id], ...]
+        # We always scan entity-level relations first, then fall back to any
+        # top-level "relations" list/dict for other output schemas.
+
+        seen_triples: set = set()  # deduplicate (head_id, tail_id, rel)
+
+        def _add_triple(head_id: str, tail_id: str, rel_type: str) -> None:
+            key = (head_id, tail_id, rel_type)
+            if key in seen_triples:
+                return
+            seen_triples.add(key)
+            if head_id in entities_dict and tail_id in entities_dict:
+                head_ent = entities_dict[head_id]
+                tail_ent = entities_dict[tail_id]
                 triples.append(
                     ExtractedTriple(
-                        h_ent.text, rel_type_normalize(rtype_raw), t_ent.text
+                        head_text=head_ent.text,
+                        relation=parse_relation_type(rel_type),
+                        tail_text=tail_ent.text,
+                        head_label=head_ent.raw_label,
+                        tail_label=tail_ent.raw_label,
                     )
                 )
 
-        return entities, triples
+        # -- Primary: entity-level relations (standard radgraph format) ------
+        for ent_id, ent_data in raw_entities.items():
+            ent_relations = ent_data.get("relations", [])
+            for rel in ent_relations:
+                if isinstance(rel, (list, tuple)) and len(rel) >= 2:
+                    _add_triple(str(ent_id), str(rel[1]), str(rel[0]))
+                elif isinstance(rel, dict):
+                    _add_triple(
+                        str(ent_id),
+                        str(rel.get("target", rel.get("tail", ""))),
+                        str(rel.get("type", rel.get("relation", ""))),
+                    )
 
-    def normalize_batch(
-        self, preds: Dict[str, Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, ExtractedEntity]], List[ExtractedTriple]]:
-        """Normalize a batch of RadGraph outputs."""
-        all_entities: List[Dict[str, ExtractedEntity]] = []
-        all_triples: List[ExtractedTriple] = []
+        # -- Fallback: top-level relations list/dict -------------------------
+        raw_relations = prediction.get("relations", [])
+        if isinstance(raw_relations, list):
+            for rel_data in raw_relations:
+                if isinstance(rel_data, dict):
+                    _add_triple(
+                        str(rel_data.get("head", rel_data.get("source", ""))),
+                        str(rel_data.get("tail", rel_data.get("target", ""))),
+                        str(rel_data.get("relation", rel_data.get("type", ""))),
+                    )
+        elif isinstance(raw_relations, dict):
+            for head_id, rel_list in raw_relations.items():
+                for rel in (rel_list if isinstance(rel_list, list) else []):
+                    if isinstance(rel, (list, tuple)) and len(rel) >= 2:
+                        _add_triple(str(head_id), str(rel[1]), str(rel[0]))
+                    elif isinstance(rel, dict):
+                        _add_triple(
+                            str(head_id),
+                            str(rel.get("target", "")),
+                            str(rel.get("type", "")),
+                        )
 
-        # preds is a dict with report IDs as keys
-        for report_id, pred_data in preds.items():
-            ents, trips = self._normalize_single(pred_data)
-            all_entities.append(ents)
-            all_triples.extend(trips)
+        entities_list = list(entities_dict.values())
+        return entities_list, triples
 
-        return all_entities, all_triples
+    # ------------------------------------------------------------------
+    # Cleaning
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _clean_report(text: str) -> str:
+        """Clean report text before extraction."""
+        text = re.sub(r"_{3,}", "", text)
+        text = re.sub(r"\s+", " ", text)
+        text = text.strip()
+        return text
+
+    # ------------------------------------------------------------------
+    # Filtering helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def filter_eligible(
+        entities: List[ExtractedEntity],
+    ) -> List[ExtractedEntity]:
+        """Return only entities eligible for CUI grounding.
+
+        Excludes:
+        - Measurement entities
+        - Entities whose text matches a measurement pattern
+        """
+        eligible = []
+        for ent in entities:
+            if ent.entity_type == EntityType.MEASUREMENT:
+                continue
+            if is_measurement(ent.text):
+                continue
+            eligible.append(ent)
+        return eligible
+
+    @staticmethod
+    def group_by_type(
+        entities: List[ExtractedEntity],
+    ) -> Dict[EntityType, List[ExtractedEntity]]:
+        """Group entities by their coarse type."""
+        groups: Dict[EntityType, List[ExtractedEntity]] = {}
+        for ent in entities:
+            groups.setdefault(ent.entity_type, []).append(ent)
+        return groups

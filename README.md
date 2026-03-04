@@ -1,37 +1,153 @@
 # KnoCLIP-XAI
-# Self-Explainable Vision–Language Framework for Medical Imaging
+
+## Self-Explainable Vision–Language Framework for Medical Imaging
+
+> Master's Thesis — Vrije Universiteit Brussel (VUB)
+> Compute: Hydra HPC Cluster (VSC Tier-2) | Dataset: MIMIC-CXR (PhysioNet) | Ontology: UMLS 2025AB
+
+---
 
 ## Overview
-This repository contains the code, experiments, and manuscript for a Master's thesis
-focused on **Self-Explainable AI (S-XAI)** for medical imaging. The core objective is to
-develop a **clinically grounded, self-explainable framework** that integrates:
 
-- Vision–Language Models (CLIP-based)
-- Medical ontologies and knowledge graphs
-- Concept-based explainability
-- Explainable medical report generation
+This repository implements **KnoCLIP-XAI**, a knowledge-graph-infused, CLIP-based
+Vision-Language Model (VLM) for **self-explainable** chest X-ray analysis. The framework is
+designed as a two-phase neuro-symbolic pipeline:
 
-The framework is designed to support **zero-shot localization** and **explainable clinical
-report generation**, where explanations are *inherently linked* to the model’s internal
-decision-making process rather than produced post-hoc.
+- **Phase I** — Knowledge Graph Construction from radiology reports
+- **Phase II** — Multi-task model training (pathology classification + report generation)
+
+Core capabilities:
+- **Self-explainable**: explanations are inherent to the model's decision process via
+  cross-attention over medical concepts, not produced post-hoc
+- **Ontology-grounded**: all medical entities are anchored to UMLS CUI codes via a
+  hybrid knowledge graph
+- **Report-generating**: produces clinically grounded radiology reports conditioned on
+  visual and knowledge features
+- **Statistically rigorous**: baseline vs. neuro-symbolic comparison with McNemar's test,
+  bootstrap CIs, and Bonferroni correction
 
 ---
 
 ## Research Objectives
-1. Integrate **prior medical knowledge** (ontologies + KGs) into representation learning.
-2. Embed knowledge representations directly into model architectures.
-3. Associate model activations with **explicit medical concepts**.
-4. Generate **clinically interpretable and explainable medical reports**.
-5. Provide rigorous **quantitative and qualitative evaluation** of explainability.
+
+1. Integrate **prior medical knowledge** (ontologies + KGs) into representation learning
+2. Embed knowledge representations directly into model architectures
+3. Associate model activations with **explicit medical concepts**
+4. Generate **clinically interpretable and explainable medical reports**
+5. Provide rigorous **quantitative and qualitative evaluation** of explainability
+
+---
+
+## Architecture
+
+```
+                    ┌──────────────────────────────┐
+                    │       Radiology Report        │
+                    └──────────────┬───────────────┘
+                                   │ Phase I
+                    ┌──────────────▼───────────────┐
+                    │   RadGraph-XL Entity Extraction│
+                    │   UMLS 2025AB Grounding       │
+                    │   SapBERT Node Embedding      │
+                    │   PyG Knowledge Graph (.pt)   │
+                    └──────────────┬───────────────┘
+                                   │
+        ┌──────────────────────────┼───────────────────────┐
+        │                          │                       │
+  ┌───────────┐           ┌──────────────┐                 │
+  │ Chest     │           │  Knowledge   │                 │
+  │ X-Ray     │           │  Graph (.pt) │                 │
+  │ (DICOM)   │           │              │                 │
+  └─────┬─────┘           └──────┬───────┘                 │
+        │                        │                         │
+        ▼                        ▼                         │
+  ┌───────────┐           ┌──────────────┐                 │
+  │ BioMedCLIP│           │   GATv2      │                 │
+  │ ViT-B/16  │           │   Encoder    │                 │
+  │ (E_V)     │           │   (E_K)      │                 │
+  └─────┬─────┘           └──────┬───────┘                 │
+        │ Z_v (B,196,768)        │ Z_k (B,N,768)          │
+        │                        │                         │
+        └────────┬───────────────┘                         │
+                 ▼                                         │
+        ┌──────────────┐                                   │
+        │Cross-Attention│                                  │
+        │   Fusion      │                                  │
+        └───────┬──────┘                                   │
+                │ Z_fused (B,N,768)                        │
+                │                                          │
+        ┌───────┴────────────────────┐                     │
+        ▼                            ▼                     │
+  ┌───────────┐            ┌──────────────┐                │
+  │ Self-Attn │            │ Transformer  │                │
+  │ Pooling + │            │   Report     │◄───────────────┘
+  │ Classif.  │            │  Decoder     │ (teacher forcing)
+  │ Head      │            │              │
+  └─────┬─────┘            └──────┬───────┘
+        │                         │
+        ▼                         ▼
+  14-class logits          Report tokens
+  (CheXpert)
+```
+
+### Model Variants
+
+| Configuration | Knowledge Graph | Visual Encoder | Outputs |
+|--------------|----------------|---------------|---------|
+| **Baseline** | No | BioMedCLIP ViT-B/16 | 14-class CheXpert classification |
+| **Neuro-Symbolic** | Yes (GATv2 + Fusion) | BioMedCLIP ViT-B/16 | Classification + Report Generation |
+
+---
+
+## Dataset: MIMIC-CXR (PhysioNet)
+
+This project uses the **MIMIC-CXR v2.0.0** dataset from [PhysioNet](https://physionet.org/content/mimic-cxr/2.0.0/), **not** a HuggingFace proxy dataset. Access requires:
+
+1. **PhysioNet Credentialed Access** — [apply here](https://physionet.org/settings/credentialing/)
+2. **CITI Training** — Data or Specimens Only Research
+3. **Data Use Agreement** — signed for MIMIC-CXR
+
+### Dataset Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total images | 377,110 DICOM chest X-rays |
+| Total studies | 227,835 radiographic studies |
+| Total patients | 65,379 |
+| Full DICOM size | ~4.7 TB |
+| Report structure | Impression, Findings, Indication, Technique sections |
+| Labels | 14-class CheXpert (from `mimic-cxr-2.0.0-chexpert.csv`) |
+| Splits | Patient-level train/validate/test (from `mimic-cxr-2.0.0-split.csv`) |
+
+### Storage Strategy
+
+The full 4.7 TB DICOM dataset is stored on the Hydra HPC cluster (see [Infrastructure](#infrastructure)). Locally, a **subset of radiology reports** is used for Phase I knowledge graph development:
+
+| Content | Location | Description |
+|---------|----------|-------------|
+| Reports (subset) | `data/MIMIC-CXR-RRG_reports/files/` | ~12,968 patients (p10 + p11 prefixes) |
+| Record list | `data/MIMIC-CXR-RRG_reports/cxr-record-list.csv` | Full 377K record mapping |
+| UMLS Metathesaurus | `data/umls-2025AB-metathesaurus-full/2025AB/META/` | MRCONSO.RRF (2.1 GB) + ancillary files |
+| DICOM images (full) | `$VSC_SCRATCH/mimic-cxr/` (HPC only) | Full dataset for training |
+
+> **Important**: The radiology report text files come directly from PhysioNet's `mimic-cxr-reports.zip`, not from any third-party source. While only p10 and p11 patient reports are available locally (~12,968 patients), the `cxr-record-list.csv` covers all 377,110 records across the full dataset. Phase I knowledge graph construction uses the locally available report subset for development, with full-dataset processing intended for the HPC cluster.
+
+### Report Structure
+
+Reports are stored as plain text files: `files/p{prefix}/p{subject_id}/s{study_id}.txt`
+
+Each report may contain sections: **FINDINGS** (detailed observations), **IMPRESSION** (summary/conclusion), INDICATION, TECHNIQUE, COMPARISON. The pipeline prioritizes the **Impression** section and falls back to **Findings** if Impression is empty.
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
-- MIMIC-CXR-RRG dataset (downloaded via `download_dataset.py`)
-- UMLS MRCONSO.RRF file (downloaded manually or via `UMLS_ontology_download.py` for 2021AB only)
+
+- **Python 3.11+** (3.12 recommended)
+- **PhysioNet credentialed access** to MIMIC-CXR
+- **UMLS license** for the Metathesaurus (free account at [UTS](https://uts.nlm.nih.gov/uts/))
+- **GPU** recommended for RadGraph extraction and model training (Phase I can run on CPU)
 
 ### Installation
 
@@ -41,147 +157,206 @@ git clone <repository-url>
 cd Clone\ repo
 ```
 
-2. **Set up virtual environment and install dependencies**
+2. **Set up virtual environment**
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+3. **Install dependencies**
+
+For **local development** (CPU-only):
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install torch-geometric
 pip install -r requirements.txt
 ```
 
-> **Important**: The `requirements.txt` pins `transformers==4.57.3` which is required for compatibility with the RadGraph model.
-
-### Usage
-
-#### Step 1: Download the Dataset (Required)
-
-Download the MIMIC-CXR-RRG dataset from HuggingFace using the provided script:
-
+For **HPC/GPU**:
 ```bash
-# List all available presets
-python download_dataset.py --list-presets
-
-# Download small dataset (~3-4 GB) - recommended for development
-python download_dataset.py --preset small --output-dir data/MIMIC-CXR-RRG_small
-
-# Download minimal dataset (~1 GB) - for testing
-python download_dataset.py --preset minimal
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch-geometric
+pip install -r requirements.txt
 ```
 
-**Available presets:**
-| Preset | Size | Description |
-|--------|------|-------------|
-| `minimal` | ~1 GB | 1 findings + 2 impression shards (testing) |
-| `small` | ~3-4 GB | 4 findings + 4 impression shards (development) |
-| `medium` | ~7-8 GB | All findings shards |
-| `large` | ~15 GB | Full dataset |
-| `findings-only` | ~7.5 GB | Only findings section |
-| `impressions-only` | ~7.5 GB | Only impression section |
+> **Critical**: `transformers==4.57.3` is pinned because the RadGraph model (`StanfordAIMI/modern-radgraph-xl`) requires this exact version. Do not upgrade.
 
-#### Step 2: Download UMLS MRCONSO.RRF (Required)
+4. **Verify installation**
+```bash
+python main.py validate
+```
 
-You need the UMLS MRCONSO.RRF file for entity grounding. **Choose one option:**
+Expected output:
+```
+VALIDATION MODE — running on CPU with dummy data
+[1/7] Checking imports …        ✓ All imports succeeded.
+[2/7] Baseline model forward …  ✓ Baseline forward pass OK.
+[3/7] Neuro-symbolic forward …  ✓ Neuro-symbolic forward pass OK.
+[4/7] Graph builder …           ✓ Graph builder OK.
+[5/7] Loss computation …        ✓ Loss OK.
+[6/7] Classification metrics …  ✓ Classification metrics OK.
+[7/7] Generation metrics …      ✓ Generation metrics OK.
+ALL VALIDATIONS PASSED ✓
+```
 
-**Option A: Manual Download (Recommended)**
+### Data Setup
+
+#### MIMIC-CXR Reports (Required for Phase I)
+
+Download the radiology reports from PhysioNet (requires credentialed access):
+
+```bash
+# Option 1: Download reports archive from PhysioNet
+wget -r -N -c -np --user YOUR_PHYSIONET_USER --ask-password \
+    https://physionet.org/files/mimic-cxr/2.0.0/mimic-cxr-reports.zip
+
+# Extract to data directory
+unzip mimic-cxr-reports.zip -d data/MIMIC-CXR-RRG_reports/
+
+# Also download the record list
+wget --user YOUR_PHYSIONET_USER --ask-password \
+    https://physionet.org/files/mimic-cxr/2.0.0/cxr-record-list.csv.gz \
+    -O data/MIMIC-CXR-RRG_reports/cxr-record-list.csv.gz
+gunzip data/MIMIC-CXR-RRG_reports/cxr-record-list.csv.gz
+```
+
+#### MIMIC-CXR DICOM Images (Required for Phase II)
+
+On the HPC cluster, download the full DICOM dataset:
+
+```bash
+# On Hydra HPC — download to scratch storage
+wget -r -N -c -np --user YOUR_PHYSIONET_USER --ask-password \
+    https://physionet.org/files/mimic-cxr/2.0.0/ \
+    -P $VSC_SCRATCH/mimic-cxr/
+```
+
+Or use the provided download script:
+```bash
+bash scripts/hydra/download_physionet.sh
+```
+
+#### UMLS Metathesaurus 2025AB (Required for Phase I)
+
 1. Go to [UMLS Downloads](https://www.nlm.nih.gov/research/umls/licensedcontent/umlsknowledgesources.html)
-2. Download the UMLS Metathesaurus (requires free UMLS account)
-3. Extract and locate `MRCONSO.RRF` in the `META/` folder
-4. Place it in your data directory, e.g., `data/umls/META/MRCONSO.RRF`
+2. Download the **2025AB Full Release** (requires free UMLS account)
+3. Extract and place under `data/umls-2025AB-metathesaurus-full/2025AB/META/`
 
-**Option B: Using the Download Script (2021AB version only)**
-```bash
-# Note: This script only works for UMLS version 2021AB
-python src/downloads/UMLS_ontology_download.py \
-  --api-key YOUR_UMLS_API_KEY \
-  --version 2021AB \
-  --output-dir data/umls \
-  --extract
-```
+Key files needed:
 
-> **Note**: Get your UMLS API key from [UTS](https://uts.nlm.nih.gov/uts/) (free account required).
+| File | Purpose | Size |
+|------|---------|------|
+| `MRCONSO.RRF` | Concept names and sources (entity → CUI mapping) | ~2.1 GB |
+| `MRSTY.RRF` | Semantic types per CUI (type validation) | ~5 MB |
+| `MRREL.RRF` | Concept relationships (ontology edges) | ~320 MB |
 
-#### Step 3: Run the Pipeline
+> **Note**: Get your UMLS API key from [UTS](https://uts.nlm.nih.gov/uts/) (free account). Store it in `.env`:
+> ```bash
+> echo "UMLS_API_KEY=your_key_here" >> .env
+> ```
 
-**Using Python directly (Recommended):**
-```bash
-python main.py \
-  --dataset-dir data/MIMIC-CXR-RRG_small \
-  --mrconso data/umls/META/MRCONSO.RRF
-```
+---
 
-**Using the shell script (Linux/Mac):**
-```bash
-chmod +x run.sh
-./run.sh --dataset-dir data/MIMIC-CXR-RRG_small --mrconso data/umls/META/MRCONSO.RRF
-```
+## Usage
 
-**Using the batch script (Windows):**
-```batch
-run.bat --dataset-dir data\MIMIC-CXR-RRG_small --mrconso data\umls\META\MRCONSO.RRF
-```
+### Phase I — Knowledge Graph Construction
 
-**Command-line options:**
-| Option | Description |
-|--------|-------------|
-| `-d, --dataset-dir DIR` | Path to downloaded dataset directory |
-| `-m, --mrconso FILE` | Path to MRCONSO.RRF file |
-| `-s, --split SPLIT` | Dataset split: test/train/val (default: test) |
-| `--seed SEED` | Random seed (default: 42) |
-| `--model-type TYPE` | RadGraph model: radgraph, radgraph-xl, modern-radgraph-xl (default: modern-radgraph-xl) |
-| `-o, --output-dir DIR` | Output directory (default: outputs/KG) |
-| `--skip-install` | Skip dependency installation |
-| `-h, --help` | Show help message |
+Phase I processes radiology reports to build a medical knowledge graph:
 
-#### Running the Pipeline Directly
-
-You can also run the pipeline module directly:
+1. Loads report text (Impression → Findings fallback)
+2. Extracts entities and relations via **RadGraph-XL** (ModernBERT backbone)
+3. Filters out measurement entities
+4. Grounds entities to **UMLS CUI codes** via exact match on MRCONSO.RRF
+5. Embeds entity text with **SapBERT** (768-dim vectors)
+6. Builds **PyTorch Geometric** graph objects (per-report + global)
+7. Validates and saves all artifacts as `.pt` files
 
 ```bash
-python src/pipelines/hybrid_kg_pipeline.py \
-  --dataset-dir data/MIMIC-CXR-RRG_small \
-  --mrconso data/umls/META/MRCONSO.RRF \
-  --split test \
-  --output-dir outputs/KG
+# Local (small run for development/testing)
+python main.py phase1 --config configs/phase1_kg_local.yaml --max-studies 100
+
+# Full run on HPC
+sbatch scripts/hydra/run_phase1.sh
 ```
 
-### Output
+**Configuration** (`configs/phase1_kg.yaml`):
+```yaml
+kg_pipeline:
+  mrconso_path: "${VSC_DATA}/umls/2025AB/META/MRCONSO.RRF"
+  mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
+  radgraph_model_type: "modern-radgraph-xl"
+  top_k_candidates: 5
+```
 
-The pipeline generates the following outputs in the `data/outputs/hybrid_kg/` directory (or custom output directory):
+**Output** (`outputs/KG/`):
 
-- **`entities_with_cui.pkl`**: Extracted entities enriched with UMLS CUI mappings
-- **`mention2cui.pkl`**: Mention-to-CUI mapping dictionary
-- **`cui_coverage.csv`**: Coverage statistics and mapping quality metrics
+| Artifact | Format | Description |
+|----------|--------|-------------|
+| `extractions.pt` | `torch.save` | Per-report entities and triples from RadGraph-XL |
+| `grounding.pt` | `torch.save` | Entity → UMLS CUI mapping results |
+| `embeddings.pt` | `torch.save` | SapBERT 768-dim node embeddings |
+| `report_graphs.pt` | `torch.save` | Per-study PyG `Data` objects |
+| `global_kg.pt` | PyG `Data` | Merged global knowledge graph |
+| `cui_coverage.csv` | CSV | Human-readable coverage statistics |
+| `grounding_summary.csv` | CSV | Grounding quality metrics |
+| `study_metadata.pt` | `torch.save` | Valid study list and metadata |
+| `phase1_summary.json` | JSON | Pipeline run summary and validation results |
 
-### Example Workflow
+### Phase II — Model Training
 
-**Complete pipeline from scratch:**
+#### Baseline Training (Classification Only)
 
 ```bash
-# 1. Download the dataset
-python download_dataset.py --preset small --output-dir data/MIMIC-CXR-RRG_small
+# Local (CPU, for testing only)
+python main.py train --config configs/phase2_baseline.yaml
 
-# 2. Download UMLS MRCONSO.RRF manually from UMLS website
-#    OR use the download script (2021AB only):
-python src/downloads/UMLS_ontology_download.py --api-key YOUR_KEY --version 2021AB --output-dir data/umls --extract
-
-# 3. Run the pipeline
-python main.py --dataset-dir data/MIMIC-CXR-RRG_small --mrconso data/umls/2021AB/META/MRCONSO.RRF
-
-# 4. Check the outputs
-ls -l outputs/KG/
+# HPC (GPU)
+sbatch scripts/hydra/train_baseline.sh
 ```
 
-**Windows example:**
+#### Neuro-Symbolic Training (Full KG + Report Generation)
 
-```batch
-REM 1. Download dataset
-python download_dataset.py --preset small --output-dir data\MIMIC-CXR-RRG_small
-
-REM 2. Run pipeline (assuming MRCONSO.RRF is already downloaded)
-python main.py --dataset-dir data\MIMIC-CXR-RRG_small --mrconso data\umls\META\MRCONSO.RRF
-
-REM 3. Check outputs
-dir outputs\KG
+```bash
+# HPC (GPU)
+sbatch scripts/hydra/train_neurosymbolic.sh
 ```
+
+**Key config differences:**
+
+| Parameter | Baseline | Neuro-Symbolic |
+|-----------|----------|----------------|
+| `use_kg` | `false` | `true` |
+| `enable_report_generation` | `false` | `true` |
+| `generation_loss_weight` | `0.0` | `1.0` |
+| Knowledge encoder | None | GATv2 (2 layers, 4 heads) |
+| Fusion module | None | Cross-attention (2 layers, 8 heads) |
+
+### Evaluation
+
+```bash
+# Evaluate baseline
+python main.py evaluate \
+    --config configs/phase2_baseline.yaml \
+    --checkpoint outputs/checkpoints/baseline/best_model.pt
+
+# Evaluate neuro-symbolic
+python main.py evaluate \
+    --config configs/phase2_neurosymbolic.yaml \
+    --checkpoint outputs/checkpoints/neurosymbolic/best_model.pt
+```
+
+**Metrics computed:**
+- **Classification**: Per-class AUC-ROC, macro AUC-ROC, F1 at optimal threshold
+- **Report Generation**: BLEU-1/2/4, ROUGE-1/2/L, BERTScore, F1-RadGraph
+- **Statistical Tests**: McNemar's test (baseline vs NS), bootstrap 95% CI, Bonferroni correction
+
+### Quick Validation (No Data Required)
+
+```bash
+python main.py validate
+```
+
+Runs 7 checks with dummy data on CPU — verifies imports, model forward passes, graph construction, loss computation, and metrics.
 
 ---
 
@@ -189,175 +364,223 @@ dir outputs\KG
 
 ```
 Clone repo/
-├── main.py                          # Main entry point for complete pipeline
-├── download_dataset.py              # Standalone dataset download script
-├── run.sh                           # Bash script for automated execution
-├── requirements.txt                 # Python dependencies
+├── main.py                          # CLI entry point (phase1/train/evaluate/validate)
+├── requirements.txt                 # Pinned production dependencies
+├── requirements-dev.txt             # Dev/test dependencies
 ├── README.md                        # This file
-├── SETUP.md                         # Detailed setup guide
-├── verify_setup.py                  # Environment verification script
 ├── LICENSE
-├── .env.example                     # Environment variables template
 │
-├── notebooks/
-│   └── Completed/
-│       └── PhaseI_Hybrid_KG_RadGraph_UMLS.ipynb  # Research notebook
+├── configs/
+│   ├── phase1_kg.yaml               # Phase I — KG pipeline (HPC paths)
+│   ├── phase1_kg_local.yaml         # Phase I — KG pipeline (local paths)
+│   ├── phase1_kg_gpu.yaml           # Phase I — KG pipeline (GPU partition)
+│   ├── phase2_baseline.yaml         # Phase II — baseline training
+│   └── phase2_neurosymbolic.yaml    # Phase II — neuro-symbolic training
 │
 ├── src/
-│   ├── __init__.py
-│   ├── core/                        # Core utilities
-│   ├── downloads/                   # Download modules
-│   │   ├── __init__.py
-│   │   ├── mimic_downloader.py      # MIMIC-CXR-RRG downloader
-│   │   └── UMLS_ontology_download.py  # UMLS download (2021AB only)
-│   ├── evaluation/                  # Evaluation metrics (empty for now)
+│   ├── __init__.py                  # Package root (version 0.2.0)
+│   ├── core/
+│   │   ├── config.py                # Dataclass configs + YAML overlay system
+│   │   └── utils.py                 # Seed, device, logging utilities
+│   ├── data/
+│   │   ├── dataset.py               # MIMICCXRDataset + collate_mimic
+│   │   ├── dicom_loader.py          # DICOM → preprocessed tensor
+│   │   ├── report_loader.py         # Report text extraction and section parsing
+│   │   ├── splits.py                # Patient-level data splitting
+│   │   └── transforms.py            # Train/eval image augmentations
 │   ├── knowledge/
-│   │   ├── __init__.py
-│   │   ├── extraction.py            # RadGraph entity extraction
-│   │   ├── graph_builder.py         # PyTorch Geometric graph construction
-│   │   └── ontology_grounding.py    # UMLS grounding/mapping
-│   ├── models/                      # ML models (empty for now)
-│   ├── pipelines/
-│   │   ├── __init__.py
-│   │   └── hybrid_kg_pipeline.py    # End-to-end pipeline
-│   └── training/                    # Training scripts (empty for now)
+│   │   ├── extraction.py            # RadGraph-XL entity/relation extraction
+│   │   ├── ontology_grounding.py    # UMLS exact-match grounding (MRCONSO)
+│   │   ├── embeddings.py            # SapBERT 768-dim node embeddings
+│   │   └── graph_builder.py         # PyG graph construction + validation
+│   ├── models/
+│   │   ├── interfaces.py            # Abstract base classes (ABCs)
+│   │   ├── visual_encoder.py        # CLIPVisualEncoder (BioMedCLIP ViT-B/16)
+│   │   ├── knowledge_encoder.py     # GATv2KnowledgeEncoder
+│   │   ├── fusion.py                # CrossAttentionFusion
+│   │   ├── classification.py        # ClassificationHead (14-class CheXpert)
+│   │   ├── decoder.py               # TransformerReportDecoder
+│   │   └── model_factory.py         # MedicalVLM + build_model()
+│   ├── training/
+│   │   ├── losses.py                # MultiTaskLoss (BCE + CE)
+│   │   ├── scheduler.py             # Linear warmup + cosine decay
+│   │   └── trainer.py               # Training loop + checkpointing
+│   ├── evaluation/
+│   │   ├── classification_metrics.py # AUC-ROC, F1, thresholds
+│   │   ├── generation_metrics.py    # BLEU, ROUGE, BERTScore
+│   │   └── statistical_tests.py     # McNemar, bootstrap CI, Bonferroni
+│   └── pipelines/
+│       ├── hybrid_kg_pipeline.py    # Phase I orchestrator
+│       └── training_pipeline.py     # Phase II orchestrator
 │
-└── data/                            # Data directory (created at runtime)
-    ├── MIMIC-CXR-RRG_small/         # Downloaded MIMIC dataset
-    ├── umls_metathesaurus/          # Downloaded UMLS data
-    └── outputs/
-        └── hybrid_kg/               # Pipeline outputs
+├── tests/                           # 84 unit tests (pytest)
+│   ├── conftest.py
+│   ├── test_config.py
+│   ├── test_evaluation.py
+│   ├── test_extraction.py
+│   ├── test_graph_builder.py
+│   ├── test_model_factory.py
+│   ├── test_modules.py
+│   ├── test_training.py
+│   └── test_transforms.py
+│
+├── scripts/
+│   ├── hydra/                       # SLURM job scripts for Hydra HPC
+│   │   ├── setup_env.sh
+│   │   ├── download_physionet.sh
+│   │   ├── preprocess_dicom.sh
+│   │   ├── run_phase1.sh
+│   │   ├── train_baseline.sh
+│   │   ├── train_neurosymbolic.sh
+│   │   └── umls_download.sh
+│   └── local/
+│       └── run.sh                   # Local development runner
+│
+├── notebooks/
+│   ├── Completed/
+│   │   └── PhaseI_Hybrid_KG_RadGraph_UMLS.ipynb
+│   └── complementary/              # Exploration notebooks
+│
+├── data/                            # Data directory (gitignored)
+│   ├── MIMIC-CXR-RRG_reports/      # Radiology report text files (PhysioNet)
+│   │   ├── cxr-record-list.csv     # 377K record mapping
+│   │   └── files/p10..p19/         # Report text by patient
+│   └── umls-2025AB-metathesaurus-full/
+│       └── 2025AB/META/            # MRCONSO.RRF, MRSTY.RRF, etc.
+│
+└── outputs/                         # Generated artifacts (gitignored)
+    ├── KG/                          # Phase I knowledge graph artifacts
+    ├── checkpoints/                 # Model checkpoints
+    └── logs/                        # Training logs
 ```
 
 ---
 
-## API Key Setup
+## Infrastructure
 
-### Obtaining a UMLS API Key
+### Hydra HPC Cluster (VUB VSC Tier-2)
 
-1. Go to [UMLS Terminology Services (UTS)](https://uts.nlm.nih.gov/uts/)
-2. Click "Sign Up" if you don't have an account
-3. Fill in the required information and agree to the terms
-4. Once logged in, go to "My Profile"
-5. Under "API Keys", click "Generate new API Key"
-6. Copy your API key
+All GPU training and large-scale processing runs on the Hydra HPC cluster:
 
-### Setting Up the API Key
+| Partition | GPUs | VRAM | Use Case |
+|-----------|------|------|----------|
+| `ampere_gpu` | 2× NVIDIA A100 | 40 GB | Model training (primary) |
+| `hopper_gpu` | 2× NVIDIA H200 | 140 GB | Large batch training |
+| `pascal_gpu` | 2× NVIDIA P100 | 16 GB | Small experiments |
+| `zen4` / `zen5` | CPU only | 384+ GB RAM | Phase I KG, DICOM preprocessing |
 
-**Method 1: Environment Variable (Recommended)**
+**Storage layout:**
 
-On Linux/Mac:
-```bash
-export UMLS_API_KEY=your_api_key_here
-```
+| Path | Purpose | Persistence |
+|------|---------|-------------|
+| `$VSC_HOME` | Code, configs, scripts | Persistent, backed up |
+| `$VSC_DATA` | UMLS, KG artifacts, checkpoints | Persistent, not backed up |
+| `$VSC_SCRATCH` | MIMIC-CXR DICOMs, temp files | Auto-purged (~30 days) |
 
-On Windows (PowerShell):
-```powershell
-$env:UMLS_API_KEY="your_api_key_here"
-```
+### Local Development
 
-**Method 2: .env File**
-
-Create a `.env` file in the project root:
-```bash
-echo "UMLS_API_KEY=your_api_key_here" > .env
-```
-
-**Method 3: Command-line Argument**
-
-Pass the API key directly to the script:
-```bash
-python main.py --api-key your_api_key_here ...
-# or
-./run.sh --api-key your_api_key_here ...
-```
+Used for code editing, small-scale debugging (≤100 samples, CPU), and documentation. Any experiment touching >500 samples or requiring GPU **must** run on Hydra.
 
 ---
 
-## Pipeline Components
+## Testing
 
-### 1. UMLS Metathesaurus Download
-Downloads and extracts the UMLS Metathesaurus, which provides:
-- MRCONSO.RRF: Concept names and sources
-- Medical concept mappings
-- Semantic types and relationships
+```bash
+# Run all tests (84 tests)
+python -m pytest tests/ -v
 
-### 2. Entity Extraction (RadGraph)
-Extracts medical entities and relationships from radiology reports:
-- **Entity Types**: ANATOMY, OBSERVATION
-- **Relation Types**: LOCATED_AT, MODIFY, SUGGESTIVE_OF, ASSOCIATED_WITH
-- Uses the RadGraph model (modern-radgraph-xl by default)
+# Run specific modules
+python -m pytest tests/test_extraction.py -v       # Entity extraction
+python -m pytest tests/test_graph_builder.py -v    # KG construction
+python -m pytest tests/test_model_factory.py -v    # Model build + forward
 
-### 3. UMLS Grounding
-Maps extracted entities to UMLS Concept Unique Identifiers (CUIs):
-- Exact-match algorithm with configurable preferences
-- Filters measurement-like entities
-- Ranks candidates by source (SAB), term type (TTY), and preference
+# With coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing
+```
 
-### 4. Hybrid Knowledge Graph Construction
-Builds a PyTorch Geometric graph combining:
-- **Prior Knowledge** (V_prior): UMLS ontology concepts
-- **Data-driven** (V_data): Extracted entities from reports
-- Node features: 768-dim embeddings
-- Edge types: RadGraph relations
+| Test File | Coverage |
+|-----------|----------|
+| `test_config.py` | Config dataclass defaults, YAML overlay, nested overrides |
+| `test_extraction.py` | Text normalization, entity parsing, filtering |
+| `test_graph_builder.py` | Graph construction, deduplication, validation |
+| `test_model_factory.py` | Model build, forward pass shapes, gradient flow |
+| `test_modules.py` | Individual model components |
+| `test_training.py` | MultiTaskLoss, scheduler warmup curves |
+| `test_evaluation.py` | Classification/generation metrics, statistical tests |
+| `test_transforms.py` | Image transforms, determinism |
 
 ---
 
-## Dependencies
+## Key Dependencies
 
-### Core Libraries
-- **torch>=2.0.0**: Deep learning framework
-- **torch-geometric>=2.3.0**: Graph neural network library
-- **radgraph>=0.1.0**: Medical entity extraction
-- **transformers==4.57.3**: Required version for RadGraph compatibility
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `torch` | 2.4.0 | Core ML framework |
+| `transformers` | 4.57.3 (pinned!) | RadGraph-XL (ModernBERT backbone) |
+| `torch-geometric` | 2.6.0 | GATv2Conv knowledge encoder |
+| `radgraph` | ≥0.1.0 | Medical entity/relation extraction |
+| `sentence-transformers` | ≥2.2.0 | SapBERT node embeddings |
+| `scikit-learn` | ≥1.3.0 | AUC-ROC, F1 metrics |
+| `nltk` | ≥3.8.0 | BLEU score computation |
+| `rouge-score` | ≥0.1.2 | ROUGE metrics |
 
-### Data Processing
-- **pandas>=2.0.0**: Data manipulation
-- **numpy>=1.24.0**: Numerical operations
-- **datasets>=2.14.0**: HuggingFace dataset loader
+See [requirements.txt](requirements.txt) for the complete pinned dependency list.
 
-### Utilities
-- **python-dotenv>=1.0.0**: Environment variable management
-- **tqdm>=4.65.0**: Progress bars
-- **huggingface-hub>=0.34.0,<1.0**: Model hub access
+---
 
-> **Important**: `transformers==4.57.3` is pinned because newer versions break RadGraph compatibility.
+## Configuration System
 
-See [requirements.txt](requirements.txt) for complete list.
+All hyperparameters are managed via Python dataclasses with YAML overlay:
 
+```python
+from src.core.config import load_config, get_baseline_config, get_neurosymbolic_config
+
+# Load from YAML (overrides dataclass defaults)
+config = load_config("configs/phase2_neurosymbolic.yaml")
+
+# Or use preset factories
+baseline = get_baseline_config()       # use_kg=False, classification only
+ns = get_neurosymbolic_config()        # use_kg=True, classification + generation
+```
+
+YAML files only need to specify values that differ from defaults.
+
+---
 
 ## Troubleshooting
 
-### Common Issues
+| Issue | Solution |
+|-------|----------|
+| `AttributeError: TokenizersBackend` | Install exact version: `pip install transformers==4.57.3` |
+| `KeyError: 'modernbert'` | Same — transformers version mismatch |
+| `radgraph not installed` | `pip install --force-reinstall --no-cache-dir radgraph` |
+| `torch_geometric not found` | `pip install torch-geometric` |
+| `MRCONSO.RRF not found` | Download UMLS 2025AB from NLM and place in `data/umls-2025AB-metathesaurus-full/2025AB/META/` |
+| `OOM during training` | Reduce `batch_size` in config or increase `accumulation_steps` |
+| `OOM during graph construction` | Use `--max-studies N` to limit processing |
 
-**Issue: "radgraph is not installed"**
-```bash
-pip install --force-reinstall --no-cache-dir radgraph
-```
+---
 
-**Issue: "AttributeError: TokenizersBackend has no attribute encode_plus"**
-- This means you have an incompatible transformers version
-- Solution: `pip install transformers==4.57.3`
+## References
 
-**Issue: "KeyError: 'modernbert'"**
-- Your transformers version is too old for `modern-radgraph-xl`
-- Solution: `pip install transformers==4.57.3`
+### Key Papers
 
-**Issue: "Dataset directory does not exist"**
-- Download the dataset first: `python download_dataset.py --preset small`
-- Verify the path is correct
-- Use absolute paths if relative paths don't work
+1. **RadGraph-XL**: Delbrouck et al., "RadGraph-XL: A Large-Scale Expert-Annotated Dataset for Entity and Relation Extraction from Radiology Reports", ACL 2024 Findings
+2. **BioMedCLIP**: Zhang et al., "BiomedCLIP: A Multimodal Biomedical Foundation Model Pretrained from Fifteen Million Scientific Image-Text Pairs", 2023
+3. **GATv2**: Brody et al., "How Attentive are Graph Attention Networks?", ICLR 2022
+4. **MIMIC-CXR**: Johnson et al., "MIMIC-CXR, a de-identified publicly available database of chest radiographs with free-text reports", Scientific Data 2019
+5. **SapBERT**: Liu et al., "Self-Alignment Pretraining for Biomedical Entity Representations", NAACL 2021
+6. **F1-RadGraph**: Delbrouck et al., "Improving the Factual Correctness of Radiology Report Generation with Semantic Rewards", EMNLP 2022
 
-**Issue: "MRCONSO.RRF not found"**
-- Download UMLS MRCONSO.RRF manually from [UMLS](https://www.nlm.nih.gov/research/umls/)
-- Or use: `python src/downloads/UMLS_ontology_download.py --api-key KEY --version 2021AB`
-- Note: The download script only works for version 2021AB
+### Datasets & Resources
 
-**Issue: "Out of memory during graph construction"**
-- Reduce the dataset size (use `--preset minimal`)
-- Use a machine with more RAM
-- Consider processing in batches
+| Resource | Source | Access |
+|----------|--------|--------|
+| MIMIC-CXR v2.0.0 | [PhysioNet](https://physionet.org/content/mimic-cxr/2.0.0/) | Credentialed |
+| UMLS 2025AB Metathesaurus | [NLM](https://www.nlm.nih.gov/research/umls/) | Licensed (free) |
+| CheXpert Labels | Bundled with MIMIC-CXR | Via `mimic-cxr-2.0.0-chexpert.csv` |
 
+---
 
 ## License
 
@@ -365,18 +588,11 @@ See [LICENSE](LICENSE) file for details.
 
 ---
 
-## Contributing
-
-This is a research project. For questions or suggestions, please open an issue.
-
----
-
 ## Acknowledgments
 
-- RadGraph: Chen et al. for the RadGraph model
-- UMLS: National Library of Medicine
-- MIMIC-CXR: Johnson et al. for the MIMIC-CXR dataset
-
----
-
-
+- **MIMIC-CXR**: Johnson et al., MIT Laboratory for Computational Physiology
+- **RadGraph**: Stanford AIMI Center (Delbrouck et al.)
+- **UMLS**: U.S. National Library of Medicine
+- **BioMedCLIP**: Microsoft Research
+- **SapBERT**: Cambridge Language Technology Lab
+- **Hydra HPC**: VUB/ULB Computing Centre (VSC Tier-2)

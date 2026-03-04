@@ -1,453 +1,307 @@
-"""
-Model Factory for Phase II: Medical Vision-Language Model.
+"""Model factory — assembles the complete MedicalVLM from config.
 
-This module provides the main MedicalVLM wrapper class that orchestrates
-the entire architecture and allows easy comparison between:
-- Neuro-Symbolic (with KG) vs. Pure Vision (without KG)
-- Different visual backbones
+Follows the **Factory** and **Composition** patterns: the orchestrator
+(:class:`MedicalVLM`) *contains* (not *is-a*) encoders, fusion, and
+heads.  Construction is driven entirely by :class:`ModelConfig`.
 """
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.data import Data, Batch
-from typing import Optional, Dict, Tuple, Any
 
-from .config import ModelConfig
-from .modules import VisualEncoder, KnowledgeEncoder, FusionModule, SelfAttentionPooling
+from src.core.config import ModelConfig
+from src.models.interfaces import (
+    BaseDecoder,
+    BaseFusionModule,
+    BaseKnowledgeEncoder,
+    BaseVisualEncoder,
+)
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
 
 class MedicalVLM(nn.Module):
+    """Knowledge-graph-infused Vision-Language Model (KnoCLIP-XAI).
+
+    The model orchestrates four components via their ABCs:
+
+    1. **Visual Encoder** (E_V):  image → patch embeddings
+    2. **Knowledge Encoder** (E_K):  graph → node embeddings
+    3. **Fusion Module**:  cross-attention Z_k × Z_v → Z_fused
+    4. **Task heads**:  classification and/or report generation
+
+    Parameters:
+        config: Model configuration.
+        visual_encoder: Concrete visual encoder.
+        knowledge_encoder: Concrete knowledge encoder (None if baseline).
+        fusion_module: Concrete fusion module (None if baseline).
+        classification_head: Classification head module (optional).
+        decoder: Report decoder module (optional).
     """
-    Medical Vision-Language Model with optional Knowledge Graph integration.
 
-    Architecture modes:
-    1. Neuro-Symbolic (use_kg=True):
-       Image → VisualEncoder → FusionModule ← KnowledgeEncoder ← KG
-                                    ↓
-                            [Classification Head]
-                            [Report Generator]
-
-    2. Pure Vision Baseline (use_kg=False):
-       Image → VisualEncoder → Pooling → Linear Probe
-                                    ↓
-                            [Classification Head]
-
-    Args:
-        config: ModelConfig with all hyperparameters and architecture choices
-    """
-
-    def __init__(self, config: ModelConfig):
+    def __init__(
+        self,
+        config: ModelConfig,
+        visual_encoder: BaseVisualEncoder,
+        knowledge_encoder: Optional[BaseKnowledgeEncoder] = None,
+        fusion_module: Optional[BaseFusionModule] = None,
+        classification_head: Optional[nn.Module] = None,
+        decoder: Optional[BaseDecoder] = None,
+    ) -> None:
         super().__init__()
         self.config = config
 
-        # Initialize Visual Encoder (always present)
-        self.visual_encoder = VisualEncoder(config.visual_encoder)
+        self.visual_encoder = visual_encoder
+        self.knowledge_encoder = knowledge_encoder
+        self.fusion_module = fusion_module
+        self.classification_head = classification_head
+        self.decoder = decoder
 
-        # Initialize Knowledge components (only if use_kg=True)
-        if config.use_kg:
-            self.knowledge_encoder = KnowledgeEncoder(config.knowledge_encoder)
-            self.fusion_module = FusionModule(config.fusion_module)
-        else:
-            self.knowledge_encoder = None
-            self.fusion_module = None
+        # Baseline pooling (used when knowledge encoder is absent)
+        if not config.use_kg:
+            from src.models.fusion import SelfAttentionPooling
 
-            # For baseline: simple pooling instead of fusion
-            self.visual_pooling = SelfAttentionPooling(config.visual_encoder.hidden_dim)
-
-        # Task-specific heads
-        if config.enable_classification:
-            self.classification_head = ClassificationHead(
-                input_dim=config.visual_encoder.hidden_dim,
-                config=config.classification_head,
+            self.baseline_pooling = SelfAttentionPooling(
+                hidden_dim=visual_encoder.get_output_dim()
             )
         else:
-            self.classification_head = None
-
-        if config.enable_report_generation:
-            self.report_generator = ReportGenerator(
-                encoder_dim=config.visual_encoder.hidden_dim,
-                config=config.report_generation,
-            )
-        else:
-            self.report_generator = None
+            self.baseline_pooling = None
 
     def forward(
         self,
-        images: torch.Tensor,
-        graphs: Optional[Batch] = None,
-        global_graph: Optional[Data] = None,
+        pixel_values: torch.Tensor,
+        graph_x: Optional[torch.Tensor] = None,
+        graph_edge_index: Optional[torch.Tensor] = None,
+        graph_edge_type: Optional[torch.Tensor] = None,
+        graph_batch: Optional[torch.Tensor] = None,
+        graph_num_nodes_per_sample: Optional[List[int]] = None,
+        target_ids: Optional[torch.Tensor] = None,
         return_attention: bool = False,
-        generate_report: bool = False,
-        report_target_ids: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Forward pass through the model.
+    ) -> Dict[str, Any]:
+        """Full forward pass.
 
         Args:
-            images: (B, 3, H, W) - input images
-            graphs: Batched PyTorch Geometric Data - report-specific KGs
-            global_graph: PyTorch Geometric Data - global medical KG
-            return_attention: Whether to return attention maps
-            generate_report: Whether to generate reports
-            report_target_ids: (B, L) - target token IDs for training
+            pixel_values: ``(B, 3, H, W)`` images.
+            graph_x: ``(N_total, D)`` batched node features.
+            graph_edge_index: ``(2, E_total)`` batched edge indices.
+            graph_edge_type: ``(E_total,)`` edge types.
+            graph_batch: ``(N_total,)`` batch vector for graph nodes.
+            graph_num_nodes_per_sample: Number of nodes per sample
+                (for re-batching).
+            target_ids: ``(B, L)`` target token IDs for report generation.
+            return_attention: Return attention maps for explainability.
 
         Returns:
-            Dictionary with:
-            - classification_logits: (B, num_classes) if classification enabled
-            - report_logits: (B, L, vocab_size) if generation enabled
-            - attention_maps: List of attention tensors if return_attention=True
-            - generated_text: List of strings if generate_report=True
+            Dict with keys: ``classification_logits``, ``generation_logits``,
+            ``fused_features``, ``visual_features``, ``attention_weights``.
         """
-        outputs = {}
+        outputs: Dict[str, Any] = {}
 
-        # Step 1: Visual Encoding
-        Z_v = self.visual_encoder(images)  # (B, P, D_v)
+        # ----- Visual Encoding -----
+        Z_v = self.visual_encoder(pixel_values)  # (B, P, D)
+        outputs["visual_features"] = Z_v
 
-        # Step 2a: Knowledge Graph Processing (if use_kg=True)
-        if self.config.use_kg:
-            if graphs is None or graphs.x.shape[0] == 0:
-                # Fallback: if no graph provided, use visual-only mode
-                Z_fused = Z_v.mean(dim=1)  # (B, D_v)
-                attention_maps = None
+        if self.config.use_kg and self.knowledge_encoder is not None and graph_x is not None:
+            # ----- Knowledge Encoding -----
+            Z_k_flat = self.knowledge_encoder(
+                graph_x, graph_edge_index, graph_edge_type, graph_batch
+            )  # (N_total, D)
+
+            # Re-batch: (N_total, D) → (B, K_max, D) with padding
+            Z_k = self._rebatch_graph(
+                Z_k_flat, graph_batch, pixel_values.shape[0]
+            )  # (B, K_max, D)
+
+            # ----- Fusion -----
+            if self.fusion_module is not None:
+                if return_attention:
+                    Z_fused, attn_weights = self.fusion_module(
+                        Z_k, Z_v, return_attention=True
+                    )
+                    outputs["attention_weights"] = attn_weights
+                else:
+                    Z_fused = self.fusion_module(Z_k, Z_v)
             else:
-                # Encode knowledge graph
-                Z_k = self.knowledge_encoder(
-                    x=graphs.x,
-                    edge_index=graphs.edge_index,
-                    edge_type=graphs.edge_type,
-                    batch=graphs.batch,
-                )  # (total_nodes, D_k)
+                Z_fused = Z_k
 
-                # Reshape Z_k to (B, K, D_k) for fusion
-                # Note: This requires knowing how many nodes per graph
-                # For now, use simple batching - in practice, handle variable sizes
-                batch_size = images.shape[0]
-                avg_nodes_per_graph = Z_k.shape[0] // batch_size
+            outputs["fused_features"] = Z_fused
 
-                # Simplified: assume equal nodes per graph (handle properly in production)
-                Z_k_batched = Z_k.view(batch_size, avg_nodes_per_graph, -1)
+            # Pool fused features for classification: mean over K dim
+            pooled = Z_fused.mean(dim=1)  # (B, D)
 
-                # Fusion: Cross-attention between knowledge and vision
-                Z_fused, attention_maps = self.fusion_module(
-                    Z_k=Z_k_batched, Z_v=Z_v, return_attention=return_attention
-                )  # (B, D)
-
-        # Step 2b: Visual-only baseline (if use_kg=False)
         else:
-            Z_fused = self.visual_pooling(Z_v)  # (B, D_v)
-            attention_maps = None
+            # ----- Baseline (no KG) -----
+            pooled = self.baseline_pooling(Z_v)  # (B, D)
+            Z_fused = None
+            outputs["fused_features"] = None
 
-        # Step 3: Classification Head
-        if self.config.enable_classification and self.classification_head:
-            classification_logits = self.classification_head(
-                Z_fused
-            )  # (B, num_classes)
+        # ----- Classification -----
+        if self.classification_head is not None and self.config.enable_classification:
+            classification_logits = self.classification_head(pooled)  # (B, C)
             outputs["classification_logits"] = classification_logits
 
-        # Step 4: Report Generation
-        if self.config.enable_report_generation and self.report_generator:
-            if generate_report:
-                # Inference mode: generate text
-                generated_text = self.report_generator.generate(
-                    encoder_output=Z_fused,
-                    max_length=self.config.report_generation.max_report_length,
-                )
-                outputs["generated_text"] = generated_text
-            elif report_target_ids is not None:
-                # Training mode: compute loss
-                report_logits = self.report_generator(
-                    encoder_output=Z_fused, target_ids=report_target_ids
-                )
-                outputs["report_logits"] = report_logits
-
-        # Optional attention maps for explainability
-        if return_attention and attention_maps is not None:
-            outputs["attention_maps"] = attention_maps
+        # ----- Report Generation -----
+        if self.decoder is not None and self.config.enable_report_generation and target_ids is not None:
+            # Decoder uses fused features (or just visual if baseline)
+            decoder_context = Z_fused if Z_fused is not None else Z_v
+            generation_logits = self.decoder(decoder_context, target_ids)
+            outputs["generation_logits"] = generation_logits
 
         return outputs
 
-
-class ClassificationHead(nn.Module):
-    """
-    Multi-label classification head for pathology prediction.
-
-    Architecture:
-        Input → Linear → BatchNorm → ReLU → Dropout → Linear → Sigmoid
-    """
-
-    def __init__(self, input_dim: int, config):
-        super().__init__()
-
-        layers = []
-
-        # Hidden layer
-        layers.append(nn.Linear(input_dim, config.hidden_dim))
-        if config.use_batch_norm:
-            layers.append(nn.BatchNorm1d(config.hidden_dim))
-        layers.append(nn.ReLU())
-        layers.append(nn.Dropout(config.dropout))
-
-        # Output layer
-        layers.append(nn.Linear(config.hidden_dim, config.num_classes))
-
-        self.classifier = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: (B, D) - fused representation
-
-        Returns:
-            logits: (B, num_classes) - classification logits
-        """
-        return self.classifier(x)
-
-
-class ReportGenerator(nn.Module):
-    """
-    Transformer-based radiology report generator.
-
-    Uses encoder-decoder architecture where:
-    - Encoder output: Fused visual-knowledge representation
-    - Decoder: Autoregressive transformer for text generation
-    """
-
-    def __init__(self, encoder_dim: int, config):
-        super().__init__()
-        self.config = config
-
-        # Project encoder output to decoder dimension
-        self.encoder_projection = nn.Linear(encoder_dim, config.decoder_dim)
-
-        # Positional encoding
-        self.pos_encoding = PositionalEncoding(
-            d_model=config.decoder_dim, max_len=config.max_report_length
-        )
-
-        # Token embedding
-        self.token_embedding = nn.Embedding(config.vocab_size, config.decoder_dim)
-
-        # Transformer decoder
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=config.decoder_dim,
-            nhead=config.num_decoder_heads,
-            dim_feedforward=config.decoder_ffn_dim,
-            dropout=config.decoder_dropout,
-            batch_first=True,
-        )
-
-        self.transformer_decoder = nn.TransformerDecoder(
-            decoder_layer, num_layers=config.num_decoder_layers
-        )
-
-        # Output projection to vocabulary
-        self.output_projection = nn.Linear(config.decoder_dim, config.vocab_size)
-
-    def forward(
-        self, encoder_output: torch.Tensor, target_ids: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Training forward pass with teacher forcing.
-
-        Args:
-            encoder_output: (B, D) - fused representation from encoder
-            target_ids: (B, L) - target token IDs
-
-        Returns:
-            logits: (B, L, vocab_size) - token prediction logits
-        """
-        batch_size, seq_len = target_ids.shape
-
-        # Expand encoder output for cross-attention
-        memory = self.encoder_projection(encoder_output).unsqueeze(1)  # (B, 1, D)
-
-        # Embed target tokens
-        tgt_embed = self.token_embedding(target_ids)  # (B, L, D)
-        tgt_embed = self.pos_encoding(tgt_embed)
-
-        # Create causal mask for autoregressive decoding
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(
-            seq_len, device=target_ids.device
-        )
-
-        # Transformer decoder
-        decoder_output = self.transformer_decoder(
-            tgt=tgt_embed, memory=memory, tgt_mask=tgt_mask
-        )  # (B, L, D)
-
-        # Project to vocabulary
-        logits = self.output_projection(decoder_output)  # (B, L, vocab_size)
-
-        return logits
-
-    def generate(
+    def generate_report(
         self,
-        encoder_output: torch.Tensor,
+        pixel_values: torch.Tensor,
+        graph_x: Optional[torch.Tensor] = None,
+        graph_edge_index: Optional[torch.Tensor] = None,
+        graph_edge_type: Optional[torch.Tensor] = None,
+        graph_batch: Optional[torch.Tensor] = None,
         max_length: int = 128,
-        start_token_id: int = 1,
-        end_token_id: int = 2,
-    ) -> list:
-        """
-        Autoregressive report generation.
+    ) -> List[List[int]]:
+        """Generate reports auto-regressively.
 
         Args:
-            encoder_output: (B, D) - fused representation
-            max_length: Maximum report length
-            start_token_id: BOS token ID
-            end_token_id: EOS token ID
+            pixel_values: ``(B, 3, H, W)`` images.
+            graph_*: Optional graph tensors.
+            max_length: Max tokens.
 
         Returns:
-            List of generated token sequences (one per batch item)
+            List of generated token ID sequences.
         """
-        batch_size = encoder_output.shape[0]
-        device = encoder_output.device
+        if self.decoder is None:
+            raise RuntimeError("Decoder not configured for report generation")
 
-        # Expand encoder output
-        memory = self.encoder_projection(encoder_output).unsqueeze(1)  # (B, 1, D)
+        Z_v = self.visual_encoder(pixel_values)
 
-        # Initialize with start token
-        generated = torch.full(
-            (batch_size, 1), start_token_id, dtype=torch.long, device=device
-        )
-
-        # Greedy decoding (can be replaced with beam search)
-        for _ in range(max_length - 1):
-            # Embed current sequence
-            tgt_embed = self.token_embedding(generated)
-            tgt_embed = self.pos_encoding(tgt_embed)
-
-            # Create causal mask
-            tgt_mask = nn.Transformer.generate_square_subsequent_mask(
-                generated.shape[1], device=device
+        if self.config.use_kg and self.knowledge_encoder is not None and graph_x is not None:
+            Z_k_flat = self.knowledge_encoder(
+                graph_x, graph_edge_index, graph_edge_type, graph_batch
             )
+            Z_k = self._rebatch_graph(Z_k_flat, graph_batch, pixel_values.shape[0])
 
-            # Decode
-            decoder_output = self.transformer_decoder(
-                tgt=tgt_embed, memory=memory, tgt_mask=tgt_mask
-            )
+            if self.fusion_module is not None:
+                Z_fused = self.fusion_module(Z_k, Z_v)
+            else:
+                Z_fused = Z_k
 
-            # Get next token prediction
-            logits = self.output_projection(decoder_output[:, -1, :])  # (B, vocab_size)
-            next_token = logits.argmax(dim=-1, keepdim=True)  # (B, 1)
+            context = Z_fused
+        else:
+            context = Z_v
 
-            # Append to sequence
-            generated = torch.cat([generated, next_token], dim=1)
+        return self.decoder.generate(context, max_length=max_length)
 
-            # Check if all sequences have ended
-            if (next_token == end_token_id).all():
-                break
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
-        return generated.tolist()
+    @staticmethod
+    def _rebatch_graph(
+        node_embeddings: torch.Tensor,
+        batch_vector: torch.Tensor,
+        batch_size: int,
+    ) -> torch.Tensor:
+        """Convert flat node embeddings → padded batch tensor.
+
+        Args:
+            node_embeddings: ``(N_total, D)``
+            batch_vector: ``(N_total,)`` integer batch assignment.
+            batch_size: B.
+
+        Returns:
+            ``(B, K_max, D)`` zero-padded.
+        """
+        D = node_embeddings.shape[1]
+        device = node_embeddings.device
+
+        # Find max nodes per sample
+        counts = torch.bincount(batch_vector, minlength=batch_size)
+        K_max = int(counts.max().item())
+
+        result = torch.zeros(batch_size, K_max, D, device=device)
+        idx = torch.zeros(batch_size, dtype=torch.long, device=device)
+
+        for i in range(node_embeddings.shape[0]):
+            b = batch_vector[i].item()
+            pos = idx[b].item()
+            result[b, pos] = node_embeddings[i]
+            idx[b] += 1
+
+        return result
 
 
-class PositionalEncoding(nn.Module):
-    """Sinusoidal positional encoding for transformer."""
-
-    def __init__(self, d_model: int, max_len: int = 5000):
-        super().__init__()
-
-        # Create positional encoding matrix
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float()
-            * (-torch.log(torch.tensor(10000.0)) / d_model)
-        )
-
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-        self.register_buffer("pe", pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Add positional encoding to input."""
-        return x + self.pe[:, : x.size(1), :]
-
-
-# Factory functions for easy model instantiation
-
+# ---------------------------------------------------------------------------
+# Factory function
+# ---------------------------------------------------------------------------
 
 def build_model(config: ModelConfig) -> MedicalVLM:
-    """
-    Build MedicalVLM from configuration.
+    """Construct a :class:`MedicalVLM` from a :class:`ModelConfig`.
+
+    This is the **only** entry point for model construction — callers
+    should never instantiate encoders, fusion modules, or heads directly.
 
     Args:
-        config: ModelConfig with all settings
+        config: Model configuration specifying all components.
 
     Returns:
-        Initialized MedicalVLM model
+        Fully assembled :class:`MedicalVLM`.
     """
-    model = MedicalVLM(config)
-    return model
+    from src.models.visual_encoder import CLIPVisualEncoder
+    from src.models.knowledge_encoder import GATv2KnowledgeEncoder
+    from src.models.fusion import CrossAttentionFusion
+    from src.models.classification import ClassificationHead
+    from src.models.decoder import TransformerReportDecoder
 
+    # Visual encoder (always required)
+    visual_encoder = CLIPVisualEncoder(config.visual_encoder)
 
-def build_baseline_model(backbone: str = "biomedclip") -> MedicalVLM:
-    """
-    Build baseline (Pure Vision) model.
+    # Knowledge encoder (only if KG enabled)
+    knowledge_encoder = None
+    fusion_module = None
+    if config.use_kg:
+        knowledge_encoder = GATv2KnowledgeEncoder(config.knowledge_encoder)
+        fusion_module = CrossAttentionFusion(config.fusion_module)
 
-    Args:
-        backbone: Visual backbone name
-
-    Returns:
-        MedicalVLM with use_kg=False
-    """
-    from .config import get_baseline_config
-
-    config = get_baseline_config()
-    config.visual_encoder.backbone_type = backbone
-
-    model = MedicalVLM(config)
-    return model
-
-
-def build_neurosymbolic_model(backbone: str = "biomedclip") -> MedicalVLM:
-    """
-    Build Neuro-Symbolic model with full KG integration.
-
-    Args:
-        backbone: Visual backbone name
-
-    Returns:
-        MedicalVLM with use_kg=True
-    """
-    from .config import get_neurosymbolic_config
-
-    config = get_neurosymbolic_config()
-    config.visual_encoder.backbone_type = backbone
-
-    model = MedicalVLM(config)
-    return model
-
-
-# Example usage
-if __name__ == "__main__":
-    from .config import ModelConfig
-
-    print("=" * 60)
-    print("Building Baseline Model (Pure Vision)")
-    print("=" * 60)
-
-    baseline = build_baseline_model(backbone="biomedclip")
-    print(f"Baseline parameters: {sum(p.numel() for p in baseline.parameters()):,}")
-
-    # Test forward pass
-    dummy_images = torch.randn(2, 3, 224, 224)
-    outputs_baseline = baseline(dummy_images)
-    print(f"Baseline output keys: {outputs_baseline.keys()}")
-    if "classification_logits" in outputs_baseline:
-        print(
-            f"Classification logits shape: {outputs_baseline['classification_logits'].shape}"
+    # Classification head
+    classification_head = None
+    if config.enable_classification:
+        classification_head = ClassificationHead(
+            config.classification_head,
+            input_dim=config.visual_encoder.output_dim,
         )
 
-    print("\n" + "=" * 60)
-    print("Building Neuro-Symbolic Model (with KG)")
-    print("=" * 60)
+    # Report decoder
+    decoder = None
+    if config.enable_report_generation:
+        decoder = TransformerReportDecoder(config.report_generation)
 
-    neurosymbolic = build_neurosymbolic_model(backbone="biomedclip")
-    print(
-        f"Neuro-Symbolic parameters: {sum(p.numel() for p in neurosymbolic.parameters()):,}"
+    model = MedicalVLM(
+        config=config,
+        visual_encoder=visual_encoder,
+        knowledge_encoder=knowledge_encoder,
+        fusion_module=fusion_module,
+        classification_head=classification_head,
+        decoder=decoder,
     )
 
-    print("\nModel architecture ready for Phase II experiments!")
+    # Log param count
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(
+        "Built MedicalVLM: %.2fM params (%.2fM trainable) | use_kg=%s | classify=%s | generate=%s",
+        total_params / 1e6,
+        trainable_params / 1e6,
+        config.use_kg,
+        config.enable_classification,
+        config.enable_report_generation,
+    )
+
+    return model

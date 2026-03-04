@@ -1,0 +1,34 @@
+# Phase I — Knowledge Graph Construction (Local / Compute Node)
+# Uses data already present on the compute node / scratch.
+#
+# Usage:
+#   export HF_HOME=$VSC_SCRATCH/hf_cache TRANSFORMERS_CACHE=$VSC_SCRATCH/hf_cache
+#   python main.py --config configs/phase1_kg_local.yaml phase1
+#   python main.py --config configs/phase1_kg_local.yaml phase1 --max-studies 500
+
+data:
+  # MIMIC-CXR-RRG report text files (local copy)
+  reports_root: "data/MIMIC-CXR-RRG_reports/files"
+  # mimic_root is unused when reports_root is set; kept for completeness
+  mimic_root: "data/MIMIC-CXR-RRG_reports"
+  kg_artifacts_dir: "outputs/KG"
+
+kg_pipeline:
+  # UMLS Metathesaurus files — present on $VSC_SCRATCH
+  mrconso_path: "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRCONSO.RRF"
+  mrsty_path: "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRSTY.RRF"
+  mrrel_path: "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRREL.RRF"
+  radgraph_model_type: "modern-radgraph-xl"
+  output_dir: "outputs/KG"
+  top_k_candidates: 5
+  # Stage-2 scispaCy fallback grounding
+  # Install model on Hydra once:
+  #   pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.5/en_core_sci_lg-0.5.5.tar.gz \
+  #       --target /scratch/brussel/112/vsc11249/scispacy_cache
+  use_scispacy_fallback: true
+  scispacy_cache_dir: "/scratch/brussel/112/vsc11249/scispacy_cache"
+  scispacy_confidence_threshold: 0.85
+
+training:
+  seed: 42
+  log_dir: "outputs/logs"

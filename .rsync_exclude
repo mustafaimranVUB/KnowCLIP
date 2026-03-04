@@ -1,0 +1,25 @@
+cat <<EOF > ~/data/Work_exp/Thesis/Clone\ repo/.rsync_exclude
+# Data and Research
+data/
+notebooks/
+research/
+datasets/
+
+# Environments and Cache
+.venv/
+envs/
+__pycache__/
+.conda/
+.pytest_cache/
+
+# Git and Configs
+.git/
+.gitignore
+.cursor/
+.copilot/
+.aiglobal/
+
+# OS/Editor specific
+.DS_Store
+.vscode/
+EOF

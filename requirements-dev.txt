@@ -1,0 +1,19 @@
+# requirements-dev.txt — Development and test dependencies
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.1.0
+
+# Code quality
+ruff>=0.1.0
+black>=23.7.0
+mypy>=1.5.0
+isort>=5.12.0
+
+# Pre-commit hooks
+pre-commit>=3.3.0
+
+# Jupyter / notebooks
+jupyter>=1.0.0
+ipykernel>=6.25.0

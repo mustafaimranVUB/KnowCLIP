@@ -1,242 +1,408 @@
-"""
-Graph Construction Module
-Builds PyTorch Geometric graphs from extracted and grounded entities.
+"""Hybrid Knowledge Graph construction using PyTorch Geometric.
 
+Builds the heterogeneous KG from RadGraph entities/relations + UMLS
+ontology relationships.  Produces ``torch_geometric.data.Data`` objects.
 """
 
-from typing import Dict, List, Optional, Tuple, Any
+from __future__ import annotations
+
+import logging
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import numpy as np
 import torch
-from torch_geometric.data import Data
+
+logger = logging.getLogger(__name__)
+
+# Edge-type integer codes (consistent across the entire codebase)
+EDGE_TYPE_MAP: Dict[str, int] = {
+    "located_at": 0,
+    "modify": 1,
+    "suggestive_of": 2,
+    "associated_with": 3,
+    "self_loop": 4,
+}
+
+# Number of distinct edge types
+NUM_EDGE_TYPES: int = len(EDGE_TYPE_MAP)
 
 
-class GraphBuilder:
+@dataclass
+class NodeInfo:
+    """Metadata for a single KG node."""
+    node_id: int
+    text: str
+    cui: Optional[str] = None
+    entity_type: str = ""  # 'anatomy' / 'observation' / 'measurement'
+    certainty: str = ""
+    embedding: Optional[torch.Tensor] = None
+    is_ontology_node: bool = False  # True for V_prior (UMLS-only) nodes
+
+
+class KnowledgeGraphBuilder:
+    """Build a PyTorch Geometric ``Data`` graph from entities and triples.
+
+    The builder maintains an internal node registry (keyed on normalised
+    text) so that duplicate mentions map to the same node.
+
+    Parameters:
+        node_dim: Embedding dimension for node features (must match the
+            visual encoder dim for downstream cross-attention).
+        add_self_loops: Whether to add self-loop edges for every node.
+        bidirectional: If ``True``, add reverse edges for every relation.
     """
-    Constructs PyTorch Geometric graph from grounded triplets.
 
-    Features:
-        - Multiple relation types (RGCN support)
-        - Bidirectional edge options
-        - Self-loop addition for node features
-        - Configurable embedding dimensions
-    """
-
-    # RadGraph schema relation mapping [cite: 5200]
-    RELATION_MAP = {
-        "located_at": 0,
-        "modify": 1,
-        "suggestive_of": 2,
-        "associated_with": 3,
-    }
-
-    def __init__(self, add_self_loops: bool = True, bidirectional: bool = False):
-        """
-        Initialize the graph builder.
-
-        Args:
-            add_self_loops: Whether to add self-loops for all nodes
-            bidirectional: Whether to add reverse edges for each relation
-        """
+    def __init__(
+        self,
+        node_dim: int = 768,
+        add_self_loops: bool = True,
+        bidirectional: bool = False,
+    ) -> None:
+        self.node_dim = node_dim
         self.add_self_loops = add_self_loops
         self.bidirectional = bidirectional
 
-    def build_graph(
+        # Internal state (reset between builds if using ``build_*``)
+        self._node_map: OrderedDict[str, NodeInfo] = OrderedDict()
+        self._edges: List[Tuple[int, int, int]] = []  # (src, dst, edge_type)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def build_from_extraction(
         self,
-        triplets: List[Dict[str, Any]],
-        node_metadata: Dict[str, Any],
-    ) -> Data:
-        """
-        Constructs a PyTorch Geometric Data object from triplets.
+        entities: list,  # List[ExtractedEntity]
+        triples: list,   # List[ExtractedTriple]
+        grounding_results: Optional[list] = None,  # List[GroundingResult]
+        embeddings: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> Any:  # torch_geometric.data.Data
+        """Build a graph from entity extraction + grounding outputs.
 
         Args:
-            triplets: List of enriched triplet dictionaries
-            node_metadata: Dictionary mapping entity text -> grounded metadata with embeddings
+            entities: Entities from :class:`EntityExtractor`.
+            triples: Triples from :class:`EntityExtractor`.
+            grounding_results: Optional grounding results for CUI
+                enrichment.
+            embeddings: Optional pre-computed embeddings keyed by
+                normalised text.
 
         Returns:
-            PyTorch Geometric Data object with:
-                - x: Node feature matrix [num_nodes, embedding_dim]
-                - edge_index: Edge connectivity [2, num_edges]
-                - edge_attr: Edge relation types [num_edges]
-                - node_names: List of entity names (for reference)
+            ``torch_geometric.data.Data`` object.
         """
-        # 1. Create entity name -> node index mapping
-        unique_entities = sorted(
-            list(set([t["head"] for t in triplets] + [t["tail"] for t in triplets]))
+        self.reset()
+
+        # Register nodes from entities
+        grounding_map: Dict[str, Any] = {}
+        if grounding_results:
+            from src.knowledge.ontology_grounding import GroundingResult
+
+            for gr in grounding_results:
+                if isinstance(gr, GroundingResult):
+                    grounding_map[gr.normalized] = gr
+
+        for ent in entities:
+            norm_text = self._normalize(ent.text)
+            emb = embeddings.get(norm_text) if embeddings else None
+            cui = None
+            if norm_text in grounding_map:
+                cui = grounding_map[norm_text].best_cui
+
+            # If entity already has CUI from previous grounding pass
+            if hasattr(ent, "cui") and ent.cui:
+                cui = ent.cui
+
+            self._register_node(
+                text=norm_text,
+                cui=cui,
+                entity_type=ent.entity_type.value if hasattr(ent.entity_type, "value") else str(ent.entity_type),
+                certainty=ent.certainty.value if hasattr(ent.certainty, "value") else str(ent.certainty),
+                embedding=emb,
+            )
+
+        # Register edges from triples
+        for triple in triples:
+            head_norm = self._normalize(triple.head_text)
+            tail_norm = self._normalize(triple.tail_text)
+            rel_str = triple.relation.value if hasattr(triple.relation, "value") else str(triple.relation)
+
+            self._add_edge(head_norm, tail_norm, rel_str)
+
+        return self._to_pyg_data()
+
+    def build_global_graph(
+        self,
+        all_entities: List[list],
+        all_triples: List[list],
+        all_groundings: Optional[List[list]] = None,
+        embeddings: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> Any:  # torch_geometric.data.Data
+        """Build a global graph aggregated from all reports.
+
+        Nodes are deduplicated across reports.
+
+        Args:
+            all_entities: List of entity lists (one per report).
+            all_triples: List of triple lists (one per report).
+            all_groundings: Optional grounding results per report.
+            embeddings: Optional pre-computed embeddings.
+
+        Returns:
+            ``torch_geometric.data.Data`` object.
+        """
+        self.reset()
+
+        grounding_map: Dict[str, Any] = {}
+        if all_groundings:
+            from src.knowledge.ontology_grounding import GroundingResult
+
+            for report_groundings in all_groundings:
+                for gr in report_groundings:
+                    if isinstance(gr, GroundingResult) and gr.mapped:
+                        grounding_map[gr.normalized] = gr
+
+        for entities in all_entities:
+            for ent in entities:
+                norm_text = self._normalize(ent.text)
+                cui = getattr(ent, "cui", None)
+                if norm_text in grounding_map:
+                    cui = grounding_map[norm_text].best_cui
+                emb = embeddings.get(norm_text) if embeddings else None
+
+                self._register_node(
+                    text=norm_text,
+                    cui=cui,
+                    entity_type=ent.entity_type.value if hasattr(ent.entity_type, "value") else str(ent.entity_type),
+                    certainty=ent.certainty.value if hasattr(ent.certainty, "value") else str(ent.certainty),
+                    embedding=emb,
+                )
+
+        for triples in all_triples:
+            for triple in triples:
+                head_norm = self._normalize(triple.head_text)
+                tail_norm = self._normalize(triple.tail_text)
+                rel_str = triple.relation.value if hasattr(triple.relation, "value") else str(triple.relation)
+                self._add_edge(head_norm, tail_norm, rel_str)
+
+        return self._to_pyg_data()
+
+    def reset(self) -> None:
+        """Clear internal state for a fresh build."""
+        self._node_map.clear()
+        self._edges.clear()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _register_node(
+        self,
+        text: str,
+        cui: Optional[str] = None,
+        entity_type: str = "",
+        certainty: str = "",
+        embedding: Optional[torch.Tensor] = None,
+        is_ontology_node: bool = False,
+    ) -> int:
+        """Register a node (or retrieve existing) and return its integer ID."""
+        if text in self._node_map:
+            node = self._node_map[text]
+            # Update fields if richer info is available
+            if cui and not node.cui:
+                node.cui = cui
+            if embedding is not None and node.embedding is None:
+                node.embedding = embedding
+            return node.node_id
+
+        node_id = len(self._node_map)
+        self._node_map[text] = NodeInfo(
+            node_id=node_id,
+            text=text,
+            cui=cui,
+            entity_type=entity_type,
+            certainty=certainty,
+            embedding=embedding,
+            is_ontology_node=is_ontology_node,
         )
-        entity_to_idx = {name: i for i, name in enumerate(unique_entities)}
-        num_nodes = len(unique_entities)
+        return node_id
 
-        # 2. Collect node features (embeddings)
-        node_features = []
-        for entity_name in unique_entities:
-            if entity_name in node_metadata:
-                embedding = node_metadata[entity_name]["embedding"]
-                # Ensure embedding is on CPU and detached
-                if isinstance(embedding, torch.Tensor):
-                    embedding = embedding.detach().cpu()
-                node_features.append(embedding)
+    def _add_edge(self, head_text: str, tail_text: str, relation: str) -> None:
+        """Add an edge between two nodes (must be registered)."""
+        if head_text not in self._node_map or tail_text not in self._node_map:
+            logger.debug(
+                "Skipping edge '%s' -[%s]-> '%s': node(s) not registered",
+                head_text,
+                relation,
+                tail_text,
+            )
+            return
+
+        src = self._node_map[head_text].node_id
+        dst = self._node_map[tail_text].node_id
+        etype = EDGE_TYPE_MAP.get(relation, EDGE_TYPE_MAP.get("associated_with", 3))
+
+        self._edges.append((src, dst, etype))
+
+        if self.bidirectional:
+            self._edges.append((dst, src, etype))
+
+    def _to_pyg_data(self) -> Any:
+        """Convert internal state to a ``torch_geometric.data.Data`` object."""
+        try:
+            from torch_geometric.data import Data  # type: ignore
+        except ImportError:
+            raise ImportError(
+                "torch_geometric not installed. "
+                "Install with: pip install torch-geometric"
+            )
+
+        num_nodes = len(self._node_map)
+        if num_nodes == 0:
+            return Data(
+                x=torch.zeros(0, self.node_dim),
+                edge_index=torch.zeros(2, 0, dtype=torch.long),
+                edge_type=torch.zeros(0, dtype=torch.long),
+            )
+
+        # Build node features
+        features = []
+        node_texts: List[str] = []
+        node_cuis: List[Optional[str]] = []
+        node_types: List[str] = []
+
+        for text, info in self._node_map.items():
+            if info.embedding is not None:
+                feat = info.embedding.detach().float()
+                if feat.shape[0] != self.node_dim:
+                    # Project if needed
+                    feat = torch.nn.functional.pad(
+                        feat, (0, max(0, self.node_dim - feat.shape[0]))
+                    )[: self.node_dim]
             else:
-                # Fallback: random embedding if not grounded
-                node_features.append(torch.randn(768))
+                # Initialize with small random values (seeded by hash)
+                rng = np.random.RandomState(hash(text) % (2**31))
+                feat = torch.from_numpy(
+                    rng.randn(self.node_dim).astype(np.float32) * 0.01
+                )
+            features.append(feat)
+            node_texts.append(text)
+            node_cuis.append(info.cui)
+            node_types.append(info.entity_type)
 
-        x = torch.stack(node_features)  # Shape: [num_nodes, 768]
+        x = torch.stack(features)  # (N, node_dim)
 
-        # 3. Build edge index and attributes
-        edge_sources = []
-        edge_targets = []
-        edge_types = []
-
-        for triplet in triplets:
-            head_idx = entity_to_idx[triplet["head"]]
-            tail_idx = entity_to_idx[triplet["tail"]]
-            relation = triplet["relation"]
-            rel_type = self.RELATION_MAP.get(relation, 3)  # Default to 3
-
-            # Forward edge
-            edge_sources.append(head_idx)
-            edge_targets.append(tail_idx)
-            edge_types.append(rel_type)
-
-            # Optionally add reverse edge
-            if self.bidirectional:
-                edge_sources.append(tail_idx)
-                edge_targets.append(head_idx)
-                edge_types.append(rel_type)
-
-        edge_index = torch.tensor([edge_sources, edge_targets], dtype=torch.long)
-        edge_attr = torch.tensor(edge_types, dtype=torch.long)
-
-        # 4. Add self-loops if requested
+        # Self-loops
         if self.add_self_loops:
-            self_loop_indices = torch.tensor(
-                [[i, i] for i in range(num_nodes)], dtype=torch.long
-            ).t()
-            self_loop_attrs = torch.zeros(num_nodes, dtype=torch.long)
+            for nid in range(num_nodes):
+                self._edges.append((nid, nid, EDGE_TYPE_MAP["self_loop"]))
 
-            edge_index = torch.cat([edge_index, self_loop_indices], dim=1)
-            edge_attr = torch.cat([edge_attr, self_loop_attrs])
+        # Edge tensors
+        if self._edges:
+            src_ids = [e[0] for e in self._edges]
+            dst_ids = [e[1] for e in self._edges]
+            edge_types = [e[2] for e in self._edges]
 
-        # 5. Create PyTorch Geometric Data object
-        graph_data = Data(
+            edge_index = torch.tensor([src_ids, dst_ids], dtype=torch.long)
+            edge_type = torch.tensor(edge_types, dtype=torch.long)
+        else:
+            edge_index = torch.zeros(2, 0, dtype=torch.long)
+            edge_type = torch.zeros(0, dtype=torch.long)
+
+        data = Data(
             x=x,
             edge_index=edge_index,
-            edge_attr=edge_attr,
+            edge_type=edge_type,
+            num_nodes=num_nodes,
         )
 
-        # Store metadata for reference
-        graph_data.node_names = unique_entities
-        graph_data.entity_to_idx = entity_to_idx
-        graph_data.idx_to_entity = {v: k for k, v in entity_to_idx.items()}
-        graph_data.num_relation_types = len(self.RELATION_MAP)
+        # Attach metadata as Python attributes (not tensors)
+        data.node_texts = node_texts
+        data.node_cuis = node_cuis
+        data.node_types = node_types
 
-        return graph_data
+        return data
 
-    def add_node_metadata_to_graph(
-        self, graph: Data, node_metadata: Dict[str, Any]
-    ) -> Data:
-        """
-        Attaches rich node metadata to the graph (CUI, definition, etc.).
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """Normalise entity text for node deduplication."""
+        from src.knowledge.extraction import normalize_text
 
-        Args:
-            graph: PyTorch Geometric Data object
-            node_metadata: Grounded entity metadata
+        return normalize_text(text)
 
-        Returns:
-            Updated graph with metadata attached
-        """
-        node_cuis = []
-        node_definitions = []
-        node_semantic_types = []
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
 
-        for entity_name in graph.node_names:
-            if entity_name in node_metadata:
-                meta = node_metadata[entity_name]
-                node_cuis.append(meta["cui"])
-                node_definitions.append(meta["definition"])
-                node_semantic_types.append(meta["semantic_type"])
-            else:
-                node_cuis.append("UNK")
-                node_definitions.append(entity_name)
-                node_semantic_types.append("Unknown")
-
-        # Store as graph attributes
-        graph.node_cuis = node_cuis
-        graph.node_definitions = node_definitions
-        graph.node_semantic_types = node_semantic_types
-
-        return graph
-
-    def get_node_by_name(self, graph: Data, node_name: str) -> Optional[int]:
-        """
-        Retrieve node index by entity name.
-
-        Args:
-            graph: PyTorch Geometric Data object
-            node_name: Entity name to look up
+    @staticmethod
+    def validate_graph(data: Any) -> Dict[str, Any]:
+        """Run sanity checks on a constructed graph.
 
         Returns:
-            Node index or None if not found
+            Dict with check name → (passed: bool, detail: str).
         """
-        if hasattr(graph, "entity_to_idx"):
-            return graph.entity_to_idx.get(node_name)
-        return None
+        checks: Dict[str, Any] = {}
 
-    def get_node_neighbors(
-        self, graph: Data, node_idx: int, relation_type: Optional[int] = None
-    ) -> List[int]:
-        """
-        Get neighboring nodes for a given node.
+        # Feature dimension
+        if hasattr(data, "x") and data.x is not None:
+            checks["node_feature_dim"] = {
+                "passed": data.x.shape[1] == 768,
+                "detail": f"shape={tuple(data.x.shape)}",
+            }
+            checks["no_nan_features"] = {
+                "passed": not torch.isnan(data.x).any().item(),
+                "detail": f"nan_count={torch.isnan(data.x).sum().item()}",
+            }
+        else:
+            checks["node_feature_dim"] = {"passed": False, "detail": "No node features"}
 
-        Args:
-            graph: PyTorch Geometric Data object
-            node_idx: Index of query node
-            relation_type: Filter by specific relation type (None = all relations)
+        # Edge type range
+        if hasattr(data, "edge_type") and data.edge_type is not None and data.edge_type.numel() > 0:
+            emin = data.edge_type.min().item()
+            emax = data.edge_type.max().item()
+            checks["edge_type_range"] = {
+                "passed": emin >= 0 and emax <= 4,
+                "detail": f"range=[{emin}, {emax}]",
+            }
+        else:
+            checks["edge_type_range"] = {"passed": True, "detail": "No edges"}
 
-        Returns:
-            List of neighbor node indices
-        """
-        neighbors = []
+        # Connectivity (via simple BFS)
+        if hasattr(data, "edge_index") and data.edge_index.numel() > 0:
+            num_nodes = data.num_nodes
+            adj: Dict[int, Set[int]] = {i: set() for i in range(num_nodes)}
+            ei = data.edge_index
+            for j in range(ei.shape[1]):
+                s, d = ei[0, j].item(), ei[1, j].item()
+                adj[s].add(d)
+                adj[d].add(s)
 
-        for i, (src, dst) in enumerate(graph.edge_index.t()):
-            src, dst = src.item(), dst.item()
-            if src == node_idx:
-                if relation_type is None or graph.edge_attr[i].item() == relation_type:
-                    neighbors.append(dst)
+            visited: Set[int] = set()
+            queue = [0]
+            while queue:
+                node = queue.pop()
+                if node in visited:
+                    continue
+                visited.add(node)
+                queue.extend(adj[node] - visited)
 
-        return neighbors
+            largest_frac = len(visited) / num_nodes if num_nodes > 0 else 0
+            # Global KG across many reports is naturally fragmented;
+            # threshold is relaxed to 0.5 (warn below that, don't hard-fail).
+            checks["connectivity"] = {
+                "passed": largest_frac >= 0.5,
+                "detail": f"largest_component={len(visited)}/{num_nodes} ({largest_frac:.1%})",
+            }
+        else:
+            checks["connectivity"] = {"passed": False, "detail": "No edges"}
 
-    def print_graph_summary(self, graph: Data) -> None:
-        """
-        Print a summary of the graph structure.
+        # Overall "valid" flag
+        checks["valid"] = all(
+            v["passed"] for v in checks.values() if isinstance(v, dict) and "passed" in v
+        )
+        return checks
 
-        Args:
-            graph: PyTorch Geometric Data object
-        """
-        print("\n" + "=" * 50)
-        print("GRAPH CONSTRUCTION SUMMARY")
-        print("=" * 50)
-        print(f"Number of Nodes: {graph.num_nodes}")
-        print(f"Number of Edges: {graph.num_edges}")
-        print(f"Node Feature Dimension: {graph.x.shape[1]}")
-        print(f"Number of Relation Types: {graph.num_relation_types}")
 
-        if hasattr(graph, "node_names"):
-            print(f"\nEntities ({len(graph.node_names)}):")
-            for i, name in enumerate(graph.node_names):
-                semantic_type = (
-                    graph.node_semantic_types[i]
-                    if hasattr(graph, "node_semantic_types")
-                    else "Unknown"
-                )
-                print(f"  {i}: {name} [{semantic_type}]")
-
-        print("\nEdges (sample):")
-        for i in range(min(10, graph.num_edges)):
-            src, dst = graph.edge_index[:, i]
-            rel_type = graph.edge_attr[i].item()
-            rel_name = [k for k, v in self.RELATION_MAP.items() if v == rel_type][0]
-            if hasattr(graph, "idx_to_entity"):
-                print(
-                    f"  {graph.idx_to_entity[src.item()]} --[{rel_name}]--> {graph.idx_to_entity[dst.item()]}"
-                )
-
-        print("=" * 50 + "\n")
+# Module-level alias for convenience
+validate_graph = KnowledgeGraphBuilder.validate_graph
