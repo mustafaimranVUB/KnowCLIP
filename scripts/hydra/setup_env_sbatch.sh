@@ -1,14 +1,25 @@
 #!/bin/bash
+#SBATCH --job-name=setup_env
+#SBATCH --partition=ampere_gpu
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+#SBATCH --mail-type=BEGIN,END,FAIL
 # ============================================================
-# Hydra Environment Setup
-# Run ONCE after first login to set up the persistent environment.
-# Usage: bash scripts/hydra/setup_env.sh
+# Hydra Environment Setup (SLURM Batch Job)
+# Run ONCE to set up the persistent environment.
+# Usage: sbatch scripts/hydra/setup_env_sbatch.sh
 # ============================================================
 set -euo pipefail
 
 echo "=== KnoCLIP-XAI Environment Setup ==="
-echo "Date: $(date)"
-echo "User: $USER"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Node   : $(hostname)"
+echo "Date   : $(date)"
+echo "User   : $USER"
 echo "VSC_HOME:    $VSC_HOME"
 echo "VSC_DATA:    $VSC_DATA"
 echo "VSC_SCRATCH: $VSC_SCRATCH"
@@ -24,6 +35,7 @@ module load Mamba
 
 # Step 2: Create persistent conda environment
 # 1. Initialize Mamba/Conda for the current shell
+# This ensures the 'mamba' and 'conda' commands work within the script
 MAMBA_ROOT=$(dirname $(dirname $(which mamba)))
 source "${MAMBA_ROOT}/etc/profile.d/conda.sh"
 source "${MAMBA_ROOT}/etc/profile.d/mamba.sh"
@@ -36,7 +48,7 @@ else
     echo "Environment already exists at ${ENV_PATH}. Skipping creation."
 fi
 
-# 3. Always activate the environment
+# 3. Always activate the environment (whether just created or already existed)
 echo "Activating environment..."
 mamba activate "${ENV_PATH}"
 
@@ -60,6 +72,7 @@ mkdir -p "$HF_HOME" "$TORCH_HOME" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$MPLCONFIG
 # Step 3: Activate and install
 echo ""
 echo "[3/5] Installing dependencies …"
+
 "${PYTHON_BIN}" -m pip install --upgrade pip setuptools wheel
 
 # Install PyTorch with CUDA 12.1.
@@ -78,16 +91,16 @@ echo ""
 echo "[4/5] Installing DICOM processing extras …"
 "${PYTHON_BIN}" -m pip install pydicom python-gdcm Pillow scikit-image
 
-# Step 4b: scispaCy model
+# Step 4b: scispaCy model (installed to $VSC_SCRATCH to avoid quota issues)
 echo ""
 echo "[4b/5] Installing en_core_sci_lg (scispaCy) to \$VSC_SCRATCH/scispacy_cache …"
 SCISPACY_CACHE="${VSC_SCRATCH}/scispacy_cache"
 mkdir -p "${SCISPACY_CACHE}"
 
-# Install scispacy package
+# Install scispacy package itself
 "${PYTHON_BIN}" -m pip install scispacy==0.5.5
 
-# Install the 0.5.4 model into the scratch cache directory
+# Install the large en_core_sci_lg model into the scratch cache directory
 "${PYTHON_BIN}" -m pip install \
     "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_lg-0.5.4.tar.gz" \
     --target "${SCISPACY_CACHE}"
@@ -128,6 +141,7 @@ import transformers; print(f'Transformers: {transformers.__version__}')
 # Create output directories
 echo ""
 echo "Creating output directories …"
+
 mkdir -p "$VSC_DATA/thesis/outputs/KG"
 mkdir -p "$VSC_DATA/thesis/outputs/checkpoints"
 mkdir -p "$VSC_DATA/thesis/outputs/logs"

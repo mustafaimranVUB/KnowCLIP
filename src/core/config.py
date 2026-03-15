@@ -210,6 +210,17 @@ class DataConfig:
     ))
     kg_artifacts_dir: Path = Path("outputs/KG")
 
+    # Split handling:
+    # - official: use PhysioNet-provided split column.
+    # - subset_hash: deterministic hash split over available studies.
+    # - auto: use official unless val/test available counts are too small.
+    split_strategy: Literal["official", "subset_hash", "auto"] = "auto"
+    subset_seed: int = 42
+    subset_train_ratio: float = 0.8
+    subset_val_ratio: float = 0.1
+    auto_min_val_samples: int = 100
+    auto_min_test_samples: int = 100
+
     batch_size: int = 16
     num_workers: int = 4
     pin_memory: bool = True

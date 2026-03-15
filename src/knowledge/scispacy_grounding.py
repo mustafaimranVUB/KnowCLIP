@@ -154,6 +154,8 @@ class ScispaCyGrounder:
 
     def _attach_linker(self, nlp: Any, spacy: Any) -> Any:
         """Attach the scispaCy UMLS EntityLinker to a loaded pipeline."""
+        self._ensure_scispacy_factories_registered()
+
         # Abbreviation detector (optional but recommended)
         if self.resolve_abbreviations and "abbreviation_detector" not in nlp.pipe_names:
             try:
@@ -181,6 +183,26 @@ class ScispaCyGrounder:
             self._linker_added = True
 
         return nlp
+
+    @staticmethod
+    def _ensure_scispacy_factories_registered() -> None:
+        """Import scispaCy modules that register custom spaCy factories.
+
+        Some HPC setups have the model package available on ``sys.path`` while
+        the factory registration side-effects are missing until these modules
+        are imported explicitly.
+        """
+        try:
+            # Import side-effects register: abbreviation_detector, scispacy_linker.
+            import scispacy.abbreviation  # noqa: F401
+            import scispacy.linking  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "scispaCy is required for Stage-2 fuzzy grounding but is not "
+                "installed in the active environment. Install with:\n"
+                "  pip install scispacy==0.5.5\n"
+                "and ensure compatible spaCy is installed."
+            ) from exc
 
     @staticmethod
     def _import_spacy() -> Any:

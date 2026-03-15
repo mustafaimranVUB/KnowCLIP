@@ -88,6 +88,13 @@ class TrainingPipeline:
             kg_artifacts_dir=dc.kg_artifacts_dir,
             transforms=get_train_transforms(),
             dev_subset_frac=dc.dev_subset_frac,
+            include_graphs=self.config.model.use_kg,
+            split_strategy=dc.split_strategy,
+            subset_seed=dc.subset_seed,
+            subset_train_ratio=dc.subset_train_ratio,
+            subset_val_ratio=dc.subset_val_ratio,
+            auto_min_val_samples=dc.auto_min_val_samples,
+            auto_min_test_samples=dc.auto_min_test_samples,
         )
         val_ds = MIMICCXRDataset(
             split="validate",
@@ -98,6 +105,13 @@ class TrainingPipeline:
             kg_artifacts_dir=dc.kg_artifacts_dir,
             transforms=get_eval_transforms(),
             dev_subset_frac=dc.dev_subset_frac,
+            include_graphs=self.config.model.use_kg,
+            split_strategy=dc.split_strategy,
+            subset_seed=dc.subset_seed,
+            subset_train_ratio=dc.subset_train_ratio,
+            subset_val_ratio=dc.subset_val_ratio,
+            auto_min_val_samples=dc.auto_min_val_samples,
+            auto_min_test_samples=dc.auto_min_test_samples,
         )
         test_ds = MIMICCXRDataset(
             split="test",
@@ -107,7 +121,25 @@ class TrainingPipeline:
             chexpert_csv=dc.chexpert_csv,
             kg_artifacts_dir=dc.kg_artifacts_dir,
             transforms=get_eval_transforms(),
+            include_graphs=self.config.model.use_kg,
+            split_strategy=dc.split_strategy,
+            subset_seed=dc.subset_seed,
+            subset_train_ratio=dc.subset_train_ratio,
+            subset_val_ratio=dc.subset_val_ratio,
+            auto_min_val_samples=dc.auto_min_val_samples,
+            auto_min_test_samples=dc.auto_min_test_samples,
         )
+
+        if len(train_ds) == 0:
+            raise RuntimeError(
+                "No training samples available after filtering for existing DICOM files. "
+                "For subset runs, ensure at least part of the train split is downloaded "
+                "(e.g., p10 subset + matching metadata)."
+            )
+        if len(val_ds) == 0:
+            logger.warning("Validation split is empty for current subset; validation metrics will be unstable.")
+        if len(test_ds) == 0:
+            logger.warning("Test split is empty for current subset; final evaluation will be skipped/empty.")
 
         common_kwargs = dict(
             batch_size=dc.batch_size,
@@ -116,7 +148,7 @@ class TrainingPipeline:
             collate_fn=collate_mimic,
         )
 
-        train_loader = DataLoader(train_ds, shuffle=True, **common_kwargs)
+        train_loader = DataLoader(train_ds, shuffle=True, drop_last=True, **common_kwargs)
         val_loader = DataLoader(val_ds, shuffle=False, **common_kwargs)
         test_loader = DataLoader(test_ds, shuffle=False, **common_kwargs)
 
@@ -279,8 +311,13 @@ class TrainingPipeline:
                 )
 
                 if isinstance(generated, list):
-                    hypotheses.extend(generated)
-                else:
+                    for item in generated:
+                        if isinstance(item, str):
+                            hypotheses.append(item)
+                        elif isinstance(item, list):
+                            # Decoder may return token-id sequences; map to a stable text placeholder.
+                            hypotheses.append(" ".join(str(tok) for tok in item))
+                elif isinstance(generated, str):
                     hypotheses.append(generated)
 
                 if isinstance(ref_texts, list):
@@ -292,7 +329,7 @@ class TrainingPipeline:
             logger.warning("No references/hypotheses for generation evaluation.")
             return {}
 
-        gen_results = gen_evaluator.evaluate(references, hypotheses)
+        gen_results = gen_evaluator.evaluate(hypotheses, references)
         logger.info("Generation results: %s", gen_results)
         return gen_results
 

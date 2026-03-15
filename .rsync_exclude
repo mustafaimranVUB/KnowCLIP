@@ -15,9 +15,9 @@ __pycache__/
 # Git and Configs
 .git/
 .gitignore
+.github/
 .cursor/
 .copilot/
-.aiglobal/
 
 # OS/Editor specific
 .DS_Store

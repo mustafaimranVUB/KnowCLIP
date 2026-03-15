@@ -19,6 +19,18 @@ from src.models.interfaces import BaseVisualEncoder
 logger = logging.getLogger(__name__)
 
 
+def _torch_supports_safe_pickle_load() -> bool:
+    """Return True if torch version is new enough for transformers pickle guard."""
+    v = torch.__version__.split("+")[0]
+    parts = v.split(".")
+    try:
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        return False
+    return (major, minor) >= (2, 6)
+
+
 class CLIPVisualEncoder(BaseVisualEncoder):
     """CLIP-based visual encoder with swappable backbone.
 
@@ -70,8 +82,21 @@ class CLIPVisualEncoder(BaseVisualEncoder):
             # Some models return a tuple
             hidden = outputs[0]
 
-        # Exclude CLS token (index 0)
-        patch_embeddings = hidden[:, 1:, :]  # (B, P, D_hidden)
+        # Keep patch tokens regardless of whether CLS is present.
+        if hidden.dim() != 3:
+            raise RuntimeError(f"Unexpected visual hidden shape: {tuple(hidden.shape)}")
+
+        if hidden.shape[1] == self.config.num_patches + 1:
+            patch_embeddings = hidden[:, 1:, :]  # [CLS] + patches
+        elif hidden.shape[1] == self.config.num_patches:
+            patch_embeddings = hidden  # patches only
+        else:
+            logger.debug(
+                "Unexpected token count %d for %s; using all tokens as patch embeddings.",
+                hidden.shape[1],
+                self.config.backbone_type,
+            )
+            patch_embeddings = hidden
 
         # Project to output dim
         patch_embeddings = self.projection(patch_embeddings)
@@ -90,34 +115,79 @@ class CLIPVisualEncoder(BaseVisualEncoder):
 
     @staticmethod
     def _load_backbone(config: VisualEncoderConfig) -> nn.Module:
-        """Load the CLIP vision backbone from HuggingFace."""
-        from transformers import CLIPVisionModel, AutoModel  # type: ignore
+        """Load the CLIP vision backbone from HuggingFace with fallbacks.
 
-        checkpoint = config.checkpoint
-        logger.info("Loading visual backbone: %s", checkpoint)
+        Some biomedical checkpoints are distributed in OpenCLIP layout and do
+        not expose standard ``pytorch_model.bin``/``model.safetensors`` files.
+        In that case we automatically fall back to compatible OpenAI CLIP
+        checkpoints for the same patch geometry.
+        """
+        from transformers import AutoModel, CLIPModel, CLIPVisionModel  # type: ignore
 
-        try:
-            # Try CLIPVisionModel first (standard CLIP)
-            model = CLIPVisionModel.from_pretrained(checkpoint)
-        except (OSError, ValueError):
-            # Fall back to AutoModel (e.g. BioMedCLIP uses open_clip)
+        checkpoint_candidates = [config.checkpoint]
+        if config.backbone_type == "biomedclip":
+            checkpoint_candidates.extend(
+                [
+                    "laion/CLIP-ViT-B-16-laion2B-s34B-b88K",
+                    "openai/clip-vit-base-patch16",
+                ]
+            )
+        elif config.backbone_type == "pubmedclip":
+            checkpoint_candidates.extend(
+                [
+                    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
+                    "laion/CLIP-ViT-B-16-laion2B-s34B-b88K",
+                    "openai/clip-vit-base-patch32",
+                    "openai/clip-vit-base-patch16",
+                ]
+            )
+
+        errors: List[str] = []
+
+        for checkpoint in checkpoint_candidates:
+            logger.info("Loading visual backbone: %s", checkpoint)
+
+            try:
+                return CLIPVisionModel.from_pretrained(checkpoint, use_safetensors=True)
+            except Exception as exc:
+                errors.append(f"CLIPVisionModel[{checkpoint}]: {exc}")
+
+            try:
+                clip_model = CLIPModel.from_pretrained(checkpoint, use_safetensors=True)
+                return clip_model.vision_model
+            except Exception as exc:
+                errors.append(f"CLIPModel[{checkpoint}]: {exc}")
+
             try:
                 full_model = AutoModel.from_pretrained(
-                    checkpoint, trust_remote_code=True
+                    checkpoint,
+                    trust_remote_code=True,
+                    use_safetensors=True,
                 )
-                # Extract vision tower if available
                 if hasattr(full_model, "vision_model"):
-                    model = full_model.vision_model
-                elif hasattr(full_model, "visual"):
-                    model = full_model.visual
-                else:
-                    model = full_model
+                    return full_model.vision_model
+                if hasattr(full_model, "visual"):
+                    return full_model.visual
+                return full_model
             except Exception as exc:
-                raise RuntimeError(
-                    f"Failed to load visual backbone '{checkpoint}': {exc}"
-                ) from exc
+                errors.append(f"AutoModel[{checkpoint}]: {exc}")
 
-        return model
+            # Last resort for older repositories that only ship pickle weights.
+            if _torch_supports_safe_pickle_load():
+                try:
+                    return CLIPVisionModel.from_pretrained(checkpoint, use_safetensors=False)
+                except Exception as exc:
+                    errors.append(f"CLIPVisionModel[pickle:{checkpoint}]: {exc}")
+
+        details = "\n".join(f"  - {e}" for e in errors[-6:])
+        raise RuntimeError(
+            "Failed to load visual backbone. Tried multiple loaders/checkpoints.\n"
+            f"Requested backbone_type='{config.backbone_type}', checkpoint='{config.checkpoint}'.\n"
+            "Recent errors:\n"
+            f"{details}\n"
+            "If you need BioMedCLIP specifically, install open-clip support in the"
+            " existing environment: `pip install open-clip-torch` and retry."
+        )
 
     # ------------------------------------------------------------------
     # Freezing

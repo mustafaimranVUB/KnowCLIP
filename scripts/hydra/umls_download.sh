@@ -2,14 +2,34 @@
 set -euo pipefail
 
 module purge
-module load Python/3.11.3-GCCcore-12.3.0
-# Activate the environment
-ENV_DIR="$VSC_DATA/thesis/envs/knoclip"
-source "$ENV_DIR/bin/activate"
+module load Mamba
+
+PROJECT_DIR="${VSC_DATA}/thesis"
+ENV_PATH="${PROJECT_DIR}/envs/knowclip"
+
+MAMBA_ROOT=$(dirname $(dirname $(which mamba)))
+source "${MAMBA_ROOT}/etc/profile.d/conda.sh"
+source "${MAMBA_ROOT}/etc/profile.d/mamba.sh"
+mamba activate "${ENV_PATH}"
+
+PYTHON_BIN="${ENV_PATH}/bin/python"
+if [ ! -x "${PYTHON_BIN}" ]; then
+    echo "ERROR: expected python not found at ${PYTHON_BIN}"
+    exit 1
+fi
+
+# Route caches to scratch to avoid $VSC_HOME growth
+export HF_HOME="${VSC_SCRATCH}/hf_cache"
+export HUGGINGFACE_HUB_CACHE="${HF_HOME}"
+export TORCH_HOME="${VSC_SCRATCH}/torch_cache"
+export XDG_CACHE_HOME="${VSC_SCRATCH}/.cache"
+export PIP_CACHE_DIR="${VSC_SCRATCH}/pip_cache"
+export MPLCONFIGDIR="${VSC_SCRATCH}/matplotlib"
+mkdir -p "$HF_HOME" "$TORCH_HOME" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$MPLCONFIGDIR"
 
 # Install gdown and any core requirements
 echo "Installing dependencies..."
-pip install gdown
+"${PYTHON_BIN}" -m pip install gdown
 # Optional: pip install -r requirements.txt (if you have one)
 
 # ── 3. Download UMLS Files ─────────────────────────────────────────────────

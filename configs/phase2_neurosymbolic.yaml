@@ -51,11 +51,11 @@ model:
     no_repeat_ngram_size: 3
 
 data:
-  mimic_root: "${MIMIC_ROOT}"
-  reports_root: "${MIMIC_REPORTS}"
-  split_csv: "${MIMIC_ROOT}/mimic-cxr-2.0.0-split.csv"
-  chexpert_csv: "${MIMIC_ROOT}/mimic-cxr-2.0.0-chexpert.csv"
-  kg_artifacts_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  mimic_root: "${VSC_SCRATCH}/mimic-cxr"
+  reports_root: "${VSC_DATA}/thesis/data/MIMIC-CXR-RRG_reports/files"
+  split_csv: "${VSC_SCRATCH}/mimic-cxr/mimic-cxr-2.0.0-split.csv"
+  chexpert_csv: "${VSC_SCRATCH}/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv"
+  kg_artifacts_dir: "${VSC_DATA}/thesis/outputs/KG"
   batch_size: 16
   num_workers: 4
   pin_memory: true
@@ -88,5 +88,5 @@ kg_pipeline:
   mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
   mrrel_path: "${VSC_DATA}/umls/2025AB/META/MRREL.RRF"
   radgraph_model_type: "modern-radgraph-xl"
-  output_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  output_dir: "${VSC_DATA}/thesis/outputs/KG"
   top_k_candidates: 5

@@ -19,12 +19,29 @@ mkdir -p "$OUTDIR"
 echo "=== Download started: $(date) ==="
 echo "Node: $(hostname)"
 
+download_if_available () {
+    local url="$1"
+    local outdir="$2"
+    wget -N -c --auth-no-challenge --user="$PHYSIONET_USER" --password="$PHYSIONET_PASS" \
+         --directory-prefix="$outdir" "$url" && return 0
+    return 1
+}
+
 # ── 1. Metadata (Small files, wget is fine here) ───────────────────────────
 for file in cxr-record-list.csv.gz cxr-study-list.csv.gz cxr-provider-list.csv.gz mimic-cxr-reports.zip
 do
     wget -N -c --auth-no-challenge --user="$PHYSIONET_USER" --password="$PHYSIONET_PASS" \
          --directory-prefix="$OUTDIR" \
          "https://physionet.org/files/mimic-cxr/2.1.0/$file"
+done
+
+# ── 1b. Split/CheXpert metadata for Phase II ───────────────────────────────
+# Prefer mimic-cxr-jpg metadata tables, with version fallback.
+for file in mimic-cxr-2.0.0-split.csv.gz mimic-cxr-2.0.0-chexpert.csv.gz
+do
+        download_if_available "https://physionet.org/files/mimic-cxr-jpg/2.0.0/$file" "$OUTDIR" \
+            || download_if_available "https://physionet.org/files/mimic-cxr-jpg/2.1.0/$file" "$OUTDIR" \
+            || echo "Warning: could not download $file from mimic-cxr-jpg metadata endpoints"
 done
 
 # ── 2. Sample 5% of p10 patients from metadata ────────────────────────────
@@ -37,7 +54,7 @@ gunzip -kf "$OUTDIR/cxr-record-list.csv.gz"
 PATIENT_LIST="$OUTDIR/p10_5pct_patients.txt"
 awk -F',' 'NR>1 && $1 ~ /^10/ {print $1}' "$OUTDIR/cxr-record-list.csv" \
     | sort -u \
-    | awk 'NR % 18 == 1' \
+    | awk 'NR % 17 == 1' \
     > "$PATIENT_LIST"
 
 TOTAL=$(wc -l < "$PATIENT_LIST")

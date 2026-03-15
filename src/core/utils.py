@@ -72,9 +72,11 @@ def setup_logging(
     Returns:
         Configured logger instance.
     """
-    logger = logging.getLogger(experiment_name)
-    logger.setLevel(level)
-    logger.handlers.clear()
+    # Configure the root logger so that all sub-module loggers
+    # (src.*, etc.) that propagate upward also produce output.
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
 
     fmt = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -85,7 +87,7 @@ def setup_logging(
     ch = logging.StreamHandler()
     ch.setLevel(level)
     ch.setFormatter(fmt)
-    logger.addHandler(ch)
+    root.addHandler(ch)
 
     # File handler
     if log_dir is not None:
@@ -95,6 +97,6 @@ def setup_logging(
         fh = logging.FileHandler(log_dir / f"{experiment_name}_{timestamp}.log")
         fh.setLevel(level)
         fh.setFormatter(fmt)
-        logger.addHandler(fh)
+        root.addHandler(fh)
 
-    return logger
+    return logging.getLogger(experiment_name)

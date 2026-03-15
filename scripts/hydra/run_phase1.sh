@@ -44,12 +44,16 @@ mamba activate "${ENV_PATH}"
 
 # Redirect HF / torch cache to scratch (quota-safe)
 export HF_HOME="$VSC_SCRATCH/hf_cache"
+export HUGGINGFACE_HUB_CACHE="$HF_HOME"
 export TORCH_HOME="$VSC_SCRATCH/torch_cache"
-mkdir -p "$HF_HOME" "$TORCH_HOME"
+export XDG_CACHE_HOME="$VSC_SCRATCH/.cache"
+export PIP_CACHE_DIR="$VSC_SCRATCH/pip_cache"
+export MPLCONFIGDIR="$VSC_SCRATCH/matplotlib"
+mkdir -p "$HF_HOME" "$TORCH_HOME" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$MPLCONFIGDIR"
 
 # ── Working directory ─────────────────────────────────────────────────────────
 cd "$VSC_DATA/thesis"
-mkdir -p outputs/KG outputs/logs
+mkdir -p outputs/KG_outputs/logs
 
 echo "GPU     : $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
 echo "Python  : $(which python)"
@@ -60,12 +64,12 @@ echo ""
 # Remove --max-studies to process the full dataset.
 # Add --skip-extraction / --skip-grounding / --skip-embedding to resume
 # from a checkpoint if the job is restarted.
-srun python -m  main.py \
+srun python -m main \
     --config configs/phase1_kg_gpu.yaml \
     --device cuda \
     phase1 \
     --batch-size 64 \
-    2>&1 | tee outputs/logs/phase1_${SLURM_JOB_ID}.log
+    2>&1 | tee outputs/KG_outputs/logs/phase1_${SLURM_JOB_ID}.log
 
 echo ""
 echo "=== Phase I finished: $(date) ==="

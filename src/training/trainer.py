@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast  # type: ignore
+from torch.cuda.amp import GradScaler  # type: ignore
 from torch.utils.data import DataLoader
 
 from src.core.config import ProjectConfig, TrainingConfig
@@ -27,6 +27,16 @@ from src.training.losses import MultiTaskLoss
 from src.training.scheduler import get_linear_warmup_cosine_decay
 
 logger = logging.getLogger(__name__)
+
+
+def _autocast_ctx(enabled: bool):
+    """Compatibility wrapper for AMP autocast across torch versions."""
+    try:
+        return torch.amp.autocast(device_type="cuda", enabled=enabled)
+    except AttributeError:
+        from torch.cuda.amp import autocast  # type: ignore
+
+        return autocast(enabled=enabled)
 
 
 class Trainer:
@@ -193,7 +203,7 @@ class Trainer:
         # TODO: Add graph data handling when KG is available
         # For now, classification-only forward pass
 
-        with autocast(enabled=self.tc.mixed_precision):
+        with _autocast_ctx(enabled=self.tc.mixed_precision):
             outputs = self.model(**forward_kwargs)
 
             losses = self.criterion(

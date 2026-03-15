@@ -27,7 +27,7 @@ outputs/KG/
 umls_metathesaurus/
 *.RRF
 
-REPORT.md
+documents/
 
 notebooks/
 

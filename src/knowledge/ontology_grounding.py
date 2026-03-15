@@ -467,9 +467,17 @@ class OntologyGrounder:
         if self.scispacy_grounder is not None:
             from src.knowledge.scispacy_grounding import ScispaCyResult
 
-            sci_result: Optional[ScispaCyResult] = self.scispacy_grounder.ground_mention(
-                entity.text
-            )
+            try:
+                sci_result: Optional[ScispaCyResult] = self.scispacy_grounder.ground_mention(
+                    entity.text
+                )
+            except Exception as exc:
+                logger.warning(
+                    "scispaCy fallback unavailable (%s); disabling Stage-2 fallback for this run.",
+                    exc,
+                )
+                self.scispacy_grounder = None
+                sci_result = None
             if sci_result is not None:
                 logger.debug(
                     "scispaCy fallback grounded '%s' → %s (%.3f)",

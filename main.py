@@ -34,10 +34,12 @@ from pathlib import Path
 # Falls back to $VSC_SCRATCH/hf_cache if available, otherwise outputs/hf_cache.
 _vsc_scratch = os.environ.get("VSC_SCRATCH", "")
 _hf_cache_default = os.path.join(_vsc_scratch, "hf_cache") if _vsc_scratch else "outputs/hf_cache"
-_hf_cache = os.environ.get("HF_HOME", _hf_cache_default)
+_hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or _hf_cache_default
 os.environ.setdefault("HF_HOME", _hf_cache)
-os.environ.setdefault("TRANSFORMERS_CACHE", _hf_cache)
 os.environ.setdefault("HUGGINGFACE_HUB_CACHE", _hf_cache)
+# Avoid deprecated cache env var warnings in transformers>=4.57.
+if "TRANSFORMERS_CACHE" in os.environ:
+    del os.environ["TRANSFORMERS_CACHE"]
 Path(_hf_cache).mkdir(parents=True, exist_ok=True)
 
 import torch
