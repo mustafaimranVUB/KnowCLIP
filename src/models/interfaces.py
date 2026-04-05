@@ -122,12 +122,17 @@ class BaseDecoder(ABC, nn.Module):
         self,
         encoder_output: torch.Tensor,
         target_ids: torch.Tensor,
+        teacher_forcing_ratio: float = 1.0,
+        encoder_padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute next-token logits given encoder context and target IDs.
 
         Args:
             encoder_output: ``(B, K, D)`` fused features.
             target_ids: ``(B, L)`` target token IDs (teacher-forced).
+            teacher_forcing_ratio: Probability of using ground-truth tokens.
+            encoder_padding_mask: ``(B, K)`` bool mask — ``True`` for
+                positions to **ignore** (zero-padded KG nodes).
 
         Returns:
             ``(B, L, vocab_size)`` logits.
@@ -139,12 +144,15 @@ class BaseDecoder(ABC, nn.Module):
         self,
         encoder_output: torch.Tensor,
         max_length: int = 128,
+        encoder_padding_mask: Optional[torch.Tensor] = None,
     ) -> List[List[int]]:
         """Auto-regressively generate token sequences.
 
         Args:
             encoder_output: ``(B, K, D)`` fused features.
             max_length: Max tokens to generate.
+            encoder_padding_mask: ``(B, K)`` bool mask — ``True`` for
+                positions to **ignore**.
 
         Returns:
             List of token ID sequences, one per batch item.

@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-04-03T07:51:23.341863",
+  "git_hash": "unknown",
+  "device": "cuda",
+  "config": {
+    "model": {
+      "use_kg": true,
+      "enable_classification": true,
+      "enable_report_generation": true,
+      "visual_encoder": {
+        "backbone_type": "biomedclip",
+        "CHECKPOINTS": {
+          "biomedclip": "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+          "pubmedclip": "flaviagiammarino/pubmed-clip-vit-base-patch32",
+          "vit-b-16": "openai/clip-vit-base-patch16",
+          "vit-l-14": "openai/clip-vit-large-patch14"
+        },
+        "PATCH_COUNTS": {
+          "biomedclip": 196,
+          "pubmedclip": 49,
+          "vit-b-16": 196,
+          "vit-l-14": 256
+        },
+        "HIDDEN_DIMS": {
+          "biomedclip": 768,
+          "pubmedclip": 768,
+          "vit-b-16": 768,
+          "vit-l-14": 1024
+        },
+        "image_size": 224,
+        "output_dim": 768,
+        "freeze_backbone": true,
+        "freeze_layers": null
+      },
+      "knowledge_encoder": {
+        "num_gat_layers": 2,
+        "hidden_channels": 256,
+        "num_attention_heads": 4,
+        "dropout": 0.1,
+        "num_edge_types": 5,
+        "edge_dim": 64,
+        "input_dim": 768,
+        "output_dim": 768,
+        "normalize_outputs": true
+      },
+      "fusion_module": {
+        "fusion_type": "cross_attention",
+        "num_fusion_layers": 2,
+        "num_heads": 8,
+        "hidden_dim": 768,
+        "use_bottleneck": true,
+        "bottleneck_dim": 256,
+        "qkv_bias": true,
+        "attention_dropout": 0.1,
+        "projection_dropout": 0.1,
+        "use_residual": true
+      },
+      "classification_head": {
+        "num_classes": 14,
+        "class_names": [
+          "Atelectasis",
+          "Cardiomegaly",
+          "Consolidation",
+          "Edema",
+          "Enlarged Cardiomediastinum",
+          "Fracture",
+          "Lung Lesion",
+          "Lung Opacity",
+          "No Finding",
+          "Pleural Effusion",
+          "Pleural Other",
+          "Pneumonia",
+          "Pneumothorax",
+          "Support Devices"
+        ],
+        "hidden_dim": 512,
+        "dropout": 0.3,
+        "use_batch_norm": true
+      },
+      "report_generation": {
+        "decoder_type": "gpt2",
+        "vocab_size": 50257,
+        "max_report_length": 128,
+        "num_decoder_layers": 12,
+        "decoder_dim": 768,
+        "num_decoder_heads": 8,
+        "decoder_ffn_dim": 2048,
+        "decoder_dropout": 0.1,
+        "beam_size": 4,
+        "length_penalty": 1.0,
+        "repetition_penalty": 1.35,
+        "no_repeat_ngram_size": 3,
+        "scheduled_sampling_enabled": true,
+        "scheduled_sampling_start_ratio": 1.0,
+        "scheduled_sampling_end_ratio": 0.75,
+        "scheduled_sampling_decay_epochs": 25
+      }
+    },
+    "data": {
+      "mimic_root": "/scratch/brussel/112/vsc11249/mimic-cxr",
+      "reports_root": "/data/brussel/112/vsc11249/thesis/data/MIMIC-CXR-RRG_reports/files",
+      "split_csv": "/scratch/brussel/112/vsc11249/mimic-cxr/mimic-cxr-2.0.0-split.csv",
+      "chexpert_csv": "/scratch/brussel/112/vsc11249/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv",
+      "kg_artifacts_dir": "/data/brussel/112/vsc11249/thesis/outputs/KG",
+      "split_strategy": "subset_hash",
+      "subset_seed": 42,
+      "subset_train_ratio": 0.7,
+      "subset_val_ratio": 0.15,
+      "subset_test_ratio": 0.15,
+      "auto_min_val_samples": 100,
+      "auto_min_test_samples": 100,
+      "batch_size": 16,
+      "num_workers": 4,
+      "pin_memory": true,
+      "dev_subset_frac": null
+    },
+    "training": {
+      "learning_rate": 0.0001,
+      "weight_decay": 0.01,
+      "warmup_steps": 1000,
+      "num_epochs": 70,
+      "gradient_clip_norm": 1.0,
+      "accumulation_steps": 4,
+      "mixed_precision": true,
+      "early_stopping_patience": 8,
+      "classification_loss_weight": 1.0,
+      "generation_loss_weight": 0.5,
+      "classification_loss_type": "bce",
+      "use_pos_weight": true,
+      "max_pos_weight": 30.0,
+      "focal_gamma": 2.0,
+      "focal_alpha": null,
+      "two_stage_training": true,
+      "stage1_epochs": 10,
+      "stage1_classification_weight": 0.0,
+      "stage1_freeze_visual_encoder": true,
+      "stage1_freeze_classification_head": true,
+      "stage1_enable_early_stopping": false,
+      "stage1_early_stopping_patience": null,
+      "reset_best_metric_on_stage2": true,
+      "checkpoint_selection_mode": "val_loss",
+      "checkpoint_generation_guard_max_val_gen_loss": null,
+      "generation_debug_samples": 5,
+      "seed": 42,
+      "checkpoint_dir": "/data/brussel/112/vsc11249/thesis/outputs/checkpoints/neurosymbolic_gpt2",
+      "save_every_n_epochs": 5,
+      "keep_last_n_checkpoints": 1,
+      "log_dir": "/data/brussel/112/vsc11249/thesis/outputs/logs",
+      "log_every_n_steps": 100,
+      "eval_every_n_epochs": 1
+    },
+    "kg_pipeline": {
+      "mrconso_path": "data/umls-2025AB-metathesaurus-full/2025AB/META/MRCONSO.RRF",
+      "mrsty_path": "data/umls-2025AB-metathesaurus-full/2025AB/META/MRSTY.RRF",
+      "mrrel_path": "data/umls-2025AB-metathesaurus-full/2025AB/META/MRREL.RRF",
+      "radgraph_model_type": "modern-radgraph-xl",
+      "output_dir": "outputs/KG",
+      "sab_preference": [
+        "SNOMEDCT_US",
+        "RXNORM",
+        "MSH"
+      ],
+      "top_k_candidates": 5,
+      "use_scispacy_fallback": true,
+      "scispacy_cache_dir": "/scratch/brussel/112/vsc11249/scispacy_cache",
+      "scispacy_confidence_threshold": 0.85,
+      "min_grounding_coverage": 0.0,
+      "fail_on_low_grounding_coverage": false
+    }
+  }
+}

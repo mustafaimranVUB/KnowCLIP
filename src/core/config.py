@@ -151,7 +151,12 @@ class ReportGenerationConfig:
     decoder_dropout: float = 0.1
     beam_size: int = 3
     length_penalty: float = 1.0
+    repetition_penalty: float = 1.2
     no_repeat_ngram_size: int = 3
+    scheduled_sampling_enabled: bool = False
+    scheduled_sampling_start_ratio: float = 1.0
+    scheduled_sampling_end_ratio: float = 0.7
+    scheduled_sampling_decay_epochs: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +223,7 @@ class DataConfig:
     subset_seed: int = 42
     subset_train_ratio: float = 0.8
     subset_val_ratio: float = 0.1
+    subset_test_ratio: float = 0.1
     auto_min_val_samples: int = 100
     auto_min_test_samples: int = 100
 
@@ -244,6 +250,29 @@ class TrainingConfig:
 
     classification_loss_weight: float = 1.0
     generation_loss_weight: float = 1.0
+
+    # Classification loss settings for class imbalance.
+    classification_loss_type: Literal["bce", "focal"] = "bce"
+    use_pos_weight: bool = True
+    max_pos_weight: float = 30.0
+    focal_gamma: float = 2.0
+    focal_alpha: Optional[float] = None
+
+    # Two-stage training: stage-1 trains KG/fusion/generation first, then joint fine-tuning.
+    two_stage_training: bool = False
+    stage1_epochs: int = 0
+    stage1_classification_weight: float = 0.0
+    stage1_freeze_visual_encoder: bool = True
+    stage1_freeze_classification_head: bool = True
+    stage1_enable_early_stopping: bool = False
+    stage1_early_stopping_patience: Optional[int] = None
+    reset_best_metric_on_stage2: bool = True
+
+    checkpoint_selection_mode: Literal["val_loss", "classification_priority"] = "val_loss"
+    checkpoint_generation_guard_max_val_gen_loss: Optional[float] = None
+
+    # Generation-eval debug logging.
+    generation_debug_samples: int = 3
 
     seed: int = 42
 
@@ -293,6 +322,12 @@ class KGPipelineConfig:
 
     #: Minimum confidence score (0–1) for scispaCy EntityLinker hits.
     scispacy_confidence_threshold: float = 0.85
+
+    #: Optional minimum grounding coverage threshold used by Phase II preflight checks.
+    min_grounding_coverage: float = 0.0
+
+    #: If True and grounding coverage is below threshold, abort Phase II run.
+    fail_on_low_grounding_coverage: bool = False
 
 
 @dataclass

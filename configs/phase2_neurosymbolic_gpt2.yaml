@@ -1,5 +1,11 @@
-# Phase II — Neuro-Symbolic Training (full KG + report generation)
-# Usage: python main.py train --config configs/phase2_neurosymbolic.yaml
+# Phase II — Neuro-Symbolic Training with pretrained GPT-2 decoder
+# Usage: python main.py train --config configs/phase2_neurosymbolic_gpt2.yaml
+#
+# Key differences from phase2_neurosymbolic.yaml:
+#   - decoder_type: "gpt2"  (pretrained GPT-2 with cross-attention bridges)
+#   - generation_loss_weight: 0.5  (elevated — generation is the primary goal)
+#   - checkpoint_selection_mode: "val_loss" (balances cls + gen quality)
+#   - beam_size: 4
 
 model:
   use_kg: true
@@ -10,8 +16,6 @@ model:
     backbone_type: "biomedclip"
     image_size: 224
     output_dim: 768
-    # For subset runs, freeze the vision backbone to avoid catastrophic forgetting.
-    # Set to false when training on the full dataset.
     freeze_backbone: true
 
   knowledge_encoder:
@@ -41,21 +45,24 @@ model:
     use_batch_norm: true
 
   report_generation:
-    decoder_type: "transformer"
-    vocab_size: 50257        # GPT-2 tokenizer
+    decoder_type: "gpt2"
+    vocab_size: 50257
     max_report_length: 128
-    num_decoder_layers: 6
+    # num_decoder_layers / decoder_dim / decoder_ffn_dim are ignored for GPT-2
+    # (uses pretrained GPT-2's 12-layer / 768-dim architecture).
+    num_decoder_layers: 12
     decoder_dim: 768
     num_decoder_heads: 8
     decoder_ffn_dim: 2048
     decoder_dropout: 0.1
-    beam_size: 3
+    beam_size: 4
     repetition_penalty: 1.35
     no_repeat_ngram_size: 3
+    length_penalty: 1.0
     scheduled_sampling_enabled: true
     scheduled_sampling_start_ratio: 1.0
-    scheduled_sampling_end_ratio: 0.75
-    scheduled_sampling_decay_epochs: 25
+    scheduled_sampling_end_ratio: 0.5
+    scheduled_sampling_decay_epochs: 40
 
 data:
   mimic_root: "${VSC_SCRATCH}/mimic-cxr"
@@ -75,23 +82,18 @@ training:
   learning_rate: 1.0e-4
   weight_decay: 0.01
   warmup_steps: 1000
-  num_epochs: 70
+  num_epochs: 150
   gradient_clip_norm: 1.0
-  # Increase effective batch size when VRAM is limited.
   accumulation_steps: 4
   mixed_precision: true
-  early_stopping_patience: 8
+  early_stopping_patience: 20
 
-  # Imbalance-aware classification settings.
   classification_loss_type: "bce"
   use_pos_weight: true
   max_pos_weight: 30.0
   focal_gamma: 2.0
   focal_alpha: null
 
-  # Two-stage optimization to reduce task interference.
-  # Stage 1: freeze visual encoder + classification head, train KG/fusion/decoder.
-  # Stage 2: unfreeze everything, joint fine-tuning.
   two_stage_training: true
   stage1_epochs: 10
   stage1_classification_weight: 0.0
@@ -101,32 +103,20 @@ training:
   stage1_early_stopping_patience: null
   reset_best_metric_on_stage2: true
 
-  checkpoint_selection_mode: "classification_priority"
-  # Disable generation guard — weighted gen loss is tracked explicitly.
+  # Use val_loss so the best checkpoint balances BOTH classification and generation.
+  checkpoint_selection_mode: "val_loss"
   checkpoint_generation_guard_max_val_gen_loss: null
 
-  # Log a few generation examples during evaluation for collapse debugging.
   generation_debug_samples: 5
 
   classification_loss_weight: 1.0
-  generation_loss_weight: 0.1
+  # Elevated from 0.1 — generation is the primary thesis objective.
+  generation_loss_weight: 0.5
 
   seed: 42
 
-  checkpoint_dir: "${VSC_DATA}/thesis/outputs/checkpoints/neurosymbolic"
+  checkpoint_dir: "${VSC_DATA}/thesis/outputs/checkpoints/neurosymbolic_gpt2"
   save_every_n_epochs: 5
   keep_last_n_checkpoints: 1
 
   log_dir: "${VSC_DATA}/thesis/outputs/logs"
-  log_every_n_steps: 100
-  eval_every_n_epochs: 1
-
-kg_pipeline:
-  mrconso_path: "${VSC_DATA}/umls/2025AB/META/MRCONSO.RRF"
-  mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
-  mrrel_path: "${VSC_DATA}/umls/2025AB/META/MRREL.RRF"
-  radgraph_model_type: "modern-radgraph-xl"
-  output_dir: "${VSC_DATA}/thesis/outputs/KG"
-  top_k_candidates: 10
-  min_grounding_coverage: 0.85
-  fail_on_low_grounding_coverage: false

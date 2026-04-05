@@ -71,32 +71,77 @@ class ClassificationEvaluator:
             name = self.class_names[c] if c < len(self.class_names) else f"class_{c}"
             class_results: Dict[str, float] = {}
 
+            # Keep only binary labels for metrics. CheXpert uncertain labels (-1)
+            # and missing labels (NaN) are excluded from evaluation.
+            y_true_col = y_true[:, c]
+            valid_mask = (~np.isnan(y_true_col)) & np.isin(y_true_col, [0.0, 1.0])
+            if not np.any(valid_mask):
+                logger.warning(
+                    "Class '%s' has no valid binary labels after masking — skipping",
+                    name,
+                )
+                class_results.update(
+                    {
+                        "auc_roc": float("nan"),
+                        "f1": float("nan"),
+                        "precision": float("nan"),
+                        "recall": float("nan"),
+                        "average_precision": float("nan"),
+                    }
+                )
+                results["per_class"][name] = class_results
+                continue
+
+            y_true_c = y_true[valid_mask, c].astype(int)
+            y_score_c = y_score[valid_mask, c]
+            y_pred_c = y_pred[valid_mask, c]
+
             # Skip classes with all-same labels
-            if len(np.unique(y_true[:, c])) < 2:
-                logger.warning("Class '%s' has only one label value — skipping AUC", name)
+            if len(np.unique(y_true_c)) < 2:
+                logger.warning(
+                    "Class '%s' has only one label value (%d samples, all=%d) — "
+                    "skipping AUC and AP (insufficient label diversity in test set)",
+                    name,
+                    len(y_true_c),
+                    int(y_true_c[0]),
+                )
                 class_results["auc_roc"] = float("nan")
+                class_results["average_precision"] = float("nan")
             else:
-                auc = float(roc_auc_score(y_true[:, c], y_score[:, c]))
+                auc = float(roc_auc_score(y_true_c, y_score_c))
                 class_results["auc_roc"] = auc
                 auc_scores.append(auc)
 
-            f1 = float(f1_score(y_true[:, c], y_pred[:, c], zero_division=0))
-            prec = float(precision_score(y_true[:, c], y_pred[:, c], zero_division=0))
-            rec = float(recall_score(y_true[:, c], y_pred[:, c], zero_division=0))
+            f1 = float(f1_score(y_true_c, y_pred_c, zero_division=0))
+            prec = float(precision_score(y_true_c, y_pred_c, zero_division=0))
+            rec = float(recall_score(y_true_c, y_pred_c, zero_division=0))
 
             class_results.update({"f1": f1, "precision": prec, "recall": rec})
             f1_scores.append(f1)
             prec_scores.append(prec)
             rec_scores.append(rec)
 
-            try:
-                ap = float(average_precision_score(y_true[:, c], y_score[:, c]))
-                class_results["average_precision"] = ap
-                ap_scores.append(ap)
-            except ValueError:
-                class_results["average_precision"] = float("nan")
+            if "average_precision" not in class_results:
+                try:
+                    ap = float(average_precision_score(y_true_c, y_score_c))
+                    class_results["average_precision"] = ap
+                    ap_scores.append(ap)
+                except ValueError:
+                    class_results["average_precision"] = float("nan")
 
             results["per_class"][name] = class_results
+
+        # Log summary of evaluable vs skipped classes
+        evaluable_auc = len(auc_scores)
+        skipped_auc = num_classes - evaluable_auc
+        if skipped_auc > 0:
+            logger.warning(
+                "AUC/AP computed for %d/%d classes; %d skipped due to single-label test samples. "
+                "Consider increasing the test set size for more reliable evaluation.",
+                evaluable_auc,
+                num_classes,
+                skipped_auc,
+            )
 
         # Macro averages
         results["macro"] = {
@@ -127,13 +172,22 @@ class ClassificationEvaluator:
         for c in range(y_true.shape[1]):
             name = self.class_names[c] if c < len(self.class_names) else f"class_{c}"
 
+            y_true_col = y_true[:, c]
+            valid_mask = (~np.isnan(y_true_col)) & np.isin(y_true_col, [0.0, 1.0])
+            if not np.any(valid_mask):
+                thresholds[name] = 0.5
+                continue
+
+            y_true_c = y_true[valid_mask, c].astype(int)
+            y_score_c = y_score[valid_mask, c]
+
             best_f1 = 0.0
             best_t = 0.5
             for t in np.arange(0.1, 0.9, 0.05):
-                preds = (y_score[:, c] >= t).astype(int)
+                preds = (y_score_c >= t).astype(int)
                 from sklearn.metrics import f1_score as _f1  # type: ignore
 
-                f1 = _f1(y_true[:, c], preds, zero_division=0)
+                f1 = _f1(y_true_c, preds, zero_division=0)
                 if f1 > best_f1:
                     best_f1 = f1
                     best_t = t

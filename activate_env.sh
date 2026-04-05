@@ -35,3 +35,11 @@ srun python -m  main.py \
 
 echo ""
 echo "=== Phase I finished: $(date) ==="
+
+
+# rsync command to sync results (adjust paths as needed):
+rsync -avz --exclude-from="/home/taha-salaar/data/Work_exp/Thesis/Clone repo/.rsync_exclude" "/home/taha-salaar/data/Work_exp/Thesis/Clone repo/" hydra:/data/brussel/112/vsc11249/thesis/
+
+
+
+rsync -avz --exclude-from="/home/taha-salaar/data/Work_exp/Thesis/Clone repo/.rsync_exclude" hydra:/data/brussel/112/vsc11249/thesis/ "/home/taha-salaar/data/Work_exp/Thesis/Clone repo/"

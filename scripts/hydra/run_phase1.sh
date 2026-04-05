@@ -29,7 +29,7 @@ echo "Start   : $(date)"
 # module load cuDNN/8.9.2.26-CUDA-12.1.1
 
 # # ── Environment ──────────────────────────────────────────────────────────────
-# source "$VSC_DATA/thesis/envs/knoclip/bin/activate"
+# source "$VSC_DATA/thesis/envs/knowclip/bin/activate"
 
 PROJECT_DIR="${VSC_DATA}/thesis"
 ENV_PATH="${PROJECT_DIR}/envs/knowclip"

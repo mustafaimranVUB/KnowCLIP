@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=knoclip_train_ns
 #SBATCH --partition=ampere_gpu
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --time=6:00:00
+#SBATCH --time=2:00:00
 #SBATCH --output=logs/train_ns_%j.out
 #SBATCH --error=logs/train_ns_%j.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=your.email@vub.be
+#SBATCH --mail-user=tsalaar.2003@gmail.com
 # ============================================================
 # Phase II — Neuro-Symbolic Training (KG + report generation)
 # Submit: sbatch scripts/hydra/train_neurosymbolic.sh
@@ -39,8 +39,10 @@ mkdir -p outputs/logs
 # Set environment
 export MIMIC_ROOT="$VSC_SCRATCH/mimic-cxr"
 export MIMIC_REPORTS="$VSC_SCRATCH/mimic-cxr-reports/files"
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 export OMP_NUM_THREADS=8
+# Enable TF32 on A100 for faster matmul/convolutions
+export NVIDIA_TF32_OVERRIDE=1
 export HF_HOME="$VSC_SCRATCH/hf_cache"
 export HUGGINGFACE_HUB_CACHE="$HF_HOME"
 export TORCH_HOME="$VSC_SCRATCH/torch_cache"
@@ -50,9 +52,15 @@ export MPLCONFIGDIR="$VSC_SCRATCH/matplotlib"
 mkdir -p "$HF_HOME" "$TORCH_HOME" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$MPLCONFIGDIR"
 
 # Run training
+CONFIG_PATH="${CONFIG_PATH:-configs/phase2_neurosymbolic.yaml}"
+SEED="${SEED:-42}"
+
+echo "Config : ${CONFIG_PATH}"
+echo "Seed   : ${SEED}"
+
 python -m main \
-    --config configs/phase2_neurosymbolic.yaml \
-    --seed 42 \
+    --config "${CONFIG_PATH}" \
+    --seed "${SEED}" \
     train
 
 echo ""

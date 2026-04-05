@@ -66,15 +66,13 @@ class MedicalVLM(nn.Module):
         self.classification_head = classification_head
         self.decoder = decoder
 
-        # Baseline pooling (used when knowledge encoder is absent)
-        if not config.use_kg:
-            from src.models.fusion import SelfAttentionPooling
+        # Baseline pooling (always initialized as fallback)
+        # Used when: (1) use_kg=False, or (2) KG data missing at inference
+        from src.models.fusion import SelfAttentionPooling
 
-            self.baseline_pooling = SelfAttentionPooling(
-                hidden_dim=visual_encoder.get_output_dim()
-            )
-        else:
-            self.baseline_pooling = None
+        self.baseline_pooling = SelfAttentionPooling(
+            hidden_dim=visual_encoder.get_output_dim()
+        )
 
     def forward(
         self,
@@ -85,6 +83,7 @@ class MedicalVLM(nn.Module):
         graph_batch: Optional[torch.Tensor] = None,
         graph_num_nodes_per_sample: Optional[List[int]] = None,
         target_ids: Optional[torch.Tensor] = None,
+        teacher_forcing_ratio: float = 1.0,
         return_attention: bool = False,
     ) -> Dict[str, Any]:
         """Full forward pass.
@@ -135,8 +134,11 @@ class MedicalVLM(nn.Module):
 
             outputs["fused_features"] = Z_fused
 
-            # Pool fused features for classification: mean over K dim
-            pooled = Z_fused.mean(dim=1)  # (B, D)
+            # Masked mean pool — only over actual (non-padding) nodes.
+            counts = torch.bincount(graph_batch, minlength=pixel_values.shape[0])
+            mask = torch.arange(Z_fused.shape[1], device=Z_fused.device).unsqueeze(0) < counts.unsqueeze(1)  # (B, K_max)
+            mask_f = mask.unsqueeze(-1).float()  # (B, K_max, 1)
+            pooled = (Z_fused * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)  # (B, D)
 
         else:
             # ----- Baseline (no KG) -----
@@ -151,9 +153,25 @@ class MedicalVLM(nn.Module):
 
         # ----- Report Generation -----
         if self.decoder is not None and self.config.enable_report_generation and target_ids is not None:
-            # Decoder uses fused features (or just visual if baseline)
-            decoder_context = Z_fused if Z_fused is not None else Z_v
-            generation_logits = self.decoder(decoder_context, target_ids)
+            # Decoder cross-attends to both KG-fused features AND visual
+            # patches so it has rich context for text generation.  Using
+            # only Z_fused (~5-20 KG nodes) is an information bottleneck
+            # that produces incoherent output.
+            encoder_padding_mask: Optional[torch.Tensor] = None
+            if Z_fused is not None:
+                decoder_context = torch.cat([Z_fused, Z_v], dim=1)  # (B, K+P, D)
+                # Mask: True for zero-padded KG positions the decoder should ignore
+                kg_pad = torch.arange(Z_fused.shape[1], device=Z_fused.device).unsqueeze(0) >= counts.unsqueeze(1)  # (B, K_max)
+                vis_pad = torch.zeros(Z_v.shape[0], Z_v.shape[1], dtype=torch.bool, device=Z_v.device)  # (B, P)
+                encoder_padding_mask = torch.cat([kg_pad, vis_pad], dim=1)  # (B, K+P)
+            else:
+                decoder_context = Z_v  # baseline: visual patches only
+            generation_logits = self.decoder(
+                decoder_context,
+                target_ids,
+                teacher_forcing_ratio=teacher_forcing_ratio,
+                encoder_padding_mask=encoder_padding_mask,
+            )
             outputs["generation_logits"] = generation_logits
 
         return outputs
@@ -182,6 +200,7 @@ class MedicalVLM(nn.Module):
 
         Z_v = self.visual_encoder(pixel_values)
 
+        encoder_padding_mask: Optional[torch.Tensor] = None
         if self.config.use_kg and self.knowledge_encoder is not None and graph_x is not None:
             Z_k_flat = self.knowledge_encoder(
                 graph_x, graph_edge_index, graph_edge_type, graph_batch
@@ -193,11 +212,19 @@ class MedicalVLM(nn.Module):
             else:
                 Z_fused = Z_k
 
-            context = Z_fused
+            # Concatenate KG-fused features with visual patches so the
+            # decoder has both semantic KG guidance and fine-grained
+            # visual detail for report generation.
+            context = torch.cat([Z_fused, Z_v], dim=1)  # (B, K+P, D)
+            # Mask: True for zero-padded KG positions
+            counts = torch.bincount(graph_batch, minlength=pixel_values.shape[0])
+            kg_pad = torch.arange(Z_fused.shape[1], device=Z_fused.device).unsqueeze(0) >= counts.unsqueeze(1)
+            vis_pad = torch.zeros(Z_v.shape[0], Z_v.shape[1], dtype=torch.bool, device=Z_v.device)
+            encoder_padding_mask = torch.cat([kg_pad, vis_pad], dim=1)
         else:
             context = Z_v
 
-        return self.decoder.generate(context, max_length=max_length)
+        return self.decoder.generate(context, max_length=max_length, encoder_padding_mask=encoder_padding_mask)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -222,18 +249,19 @@ class MedicalVLM(nn.Module):
         D = node_embeddings.shape[1]
         device = node_embeddings.device
 
-        # Find max nodes per sample
         counts = torch.bincount(batch_vector, minlength=batch_size)
         K_max = int(counts.max().item())
-
         result = torch.zeros(batch_size, K_max, D, device=device)
-        idx = torch.zeros(batch_size, dtype=torch.long, device=device)
 
+        # Compute per-node position within its sample
+        offsets = torch.zeros(node_embeddings.shape[0], dtype=torch.long, device=device)
+        seen = torch.zeros(batch_size, dtype=torch.long, device=device)
         for i in range(node_embeddings.shape[0]):
-            b = batch_vector[i].item()
-            pos = idx[b].item()
-            result[b, pos] = node_embeddings[i]
-            idx[b] += 1
+            b = batch_vector[i]
+            offsets[i] = seen[b]
+            seen[b] += 1
+
+        result[batch_vector, offsets] = node_embeddings
 
         return result
 
@@ -258,7 +286,7 @@ def build_model(config: ModelConfig) -> MedicalVLM:
     from src.models.knowledge_encoder import GATv2KnowledgeEncoder
     from src.models.fusion import CrossAttentionFusion
     from src.models.classification import ClassificationHead
-    from src.models.decoder import TransformerReportDecoder
+    from src.models.decoder import TransformerReportDecoder, GPT2ReportDecoder
 
     # Visual encoder (always required)
     visual_encoder = CLIPVisualEncoder(config.visual_encoder)
@@ -281,7 +309,11 @@ def build_model(config: ModelConfig) -> MedicalVLM:
     # Report decoder
     decoder = None
     if config.enable_report_generation:
-        decoder = TransformerReportDecoder(config.report_generation)
+        decoder_type = getattr(config.report_generation, "decoder_type", "transformer")
+        if decoder_type == "gpt2":
+            decoder = GPT2ReportDecoder(config.report_generation)
+        else:
+            decoder = TransformerReportDecoder(config.report_generation)
 
     model = MedicalVLM(
         config=config,

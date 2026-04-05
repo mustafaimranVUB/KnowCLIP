@@ -1,9 +1,12 @@
 cat <<EOF > ~/data/Work_exp/Thesis/Clone\ repo/.rsync_exclude
 # Data and Research
-data/
+MIMIC-CXR-RRG_reports/
+umls-2025AB-metathesaurus-full/
 notebooks/
 research/
 datasets/
+documents/
+p10/
 
 # Environments and Cache
 .venv/

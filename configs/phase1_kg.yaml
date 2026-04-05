@@ -4,14 +4,14 @@
 data:
   mimic_root: "${MIMIC_ROOT}"          # e.g. $VSC_SCRATCH/mimic-cxr
   reports_root: "${MIMIC_REPORTS}"      # e.g. $VSC_SCRATCH/mimic-cxr-reports/files
-  kg_artifacts_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  kg_artifacts_dir: "${VSC_DATA}/thesis/outputs/KG"
 
 kg_pipeline:
   mrconso_path: "${VSC_DATA}/umls/2025AB/META/MRCONSO.RRF"
   mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
   mrrel_path: "${VSC_DATA}/umls/2025AB/META/MRREL.RRF"
   radgraph_model_type: "modern-radgraph-xl"
-  output_dir: "${VSC_DATA}/knoclip/outputs/KG"
+  output_dir: "${VSC_DATA}/thesis/outputs/KG"
   top_k_candidates: 5
   # Stage-2 scispaCy fallback grounding
   # Model installed to $VSC_SCRATCH/scispacy_cache via:
@@ -23,4 +23,4 @@ kg_pipeline:
 
 training:
   seed: 42
-  log_dir: "${VSC_DATA}/knoclip/outputs/logs"
+  log_dir: "${VSC_DATA}/thesis/outputs/logs"

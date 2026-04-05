@@ -54,6 +54,58 @@ class TestClassificationEvaluator:
         for name, t in thresholds.items():
             assert 0.1 <= t <= 0.85
 
+    def test_evaluate_with_nan_labels(self):
+        evaluator = ClassificationEvaluator(class_names=["c0", "c1", "c2"])
+        y_true = np.array(
+            [
+                [1.0, 0.0, np.nan],
+                [0.0, 1.0, np.nan],
+                [1.0, np.nan, np.nan],
+                [0.0, 0.0, np.nan],
+            ],
+            dtype=float,
+        )
+        y_score = np.array(
+            [
+                [0.9, 0.2, 0.1],
+                [0.1, 0.8, 0.3],
+                [0.7, 0.4, 0.6],
+                [0.2, 0.3, 0.7],
+            ],
+            dtype=float,
+        )
+
+        result = evaluator.evaluate(y_true=y_true, y_score=y_score)
+        assert "per_class" in result and "macro" in result
+        # Entirely-NaN class should not crash and should remain NaN.
+        assert np.isnan(result["per_class"]["c2"]["auc_roc"])
+
+    def test_evaluate_with_uncertain_minus_one_labels(self):
+        evaluator = ClassificationEvaluator(class_names=["c0", "c1"])
+        y_true = np.array(
+            [
+                [1.0, -1.0],
+                [0.0, 1.0],
+                [-1.0, 0.0],
+                [1.0, -1.0],
+            ],
+            dtype=float,
+        )
+        y_score = np.array(
+            [
+                [0.9, 0.8],
+                [0.2, 0.7],
+                [0.4, 0.3],
+                [0.8, 0.6],
+            ],
+            dtype=float,
+        )
+
+        result = evaluator.evaluate(y_true=y_true, y_score=y_score)
+        assert "per_class" in result and "macro" in result
+        # c1 has both 0 and 1 after excluding uncertain (-1), so AUC should be valid.
+        assert not np.isnan(result["per_class"]["c1"]["auc_roc"])
+
 
 class TestMcNemarTest:
     def test_same_predictions(self):

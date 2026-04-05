@@ -1,0 +1,7 @@
+=== Phase II: Baseline Training ===
+Job ID: 11569915
+Node:   node407.hydra.os
+Date:   Wed Mar 18 12:43:53 PM CET 2026
+GPU:    NVIDIA A100-PCIE-40GB, 40960 MiB
+
+Baseline training completed at Wed Mar 18 01:10:13 PM CET 2026

@@ -4,11 +4,11 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=6:00:00
+#SBATCH --time=2:00:00
 #SBATCH --output=logs/train_baseline_%j.out
 #SBATCH --error=logs/train_baseline_%j.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=your.email@vub.be
+#SBATCH --mail-user=tsalaar.2003@gmail.com
 # ============================================================
 # Phase II — Baseline Training (classification only, no KG)
 # Submit: sbatch scripts/hydra/train_baseline.sh
@@ -42,7 +42,10 @@ mkdir -p outputs/logs
 # Set environment
 export MIMIC_ROOT="$VSC_SCRATCH/mimic-cxr"
 export MIMIC_REPORTS="$VSC_SCRATCH/mimic-cxr-reports/files"
+export CUDA_VISIBLE_DEVICES=0
 export OMP_NUM_THREADS=8
+# Enable TF32 on A100 for faster matmul/convolutions
+export NVIDIA_TF32_OVERRIDE=1
 export HF_HOME="$VSC_SCRATCH/hf_cache"
 export HUGGINGFACE_HUB_CACHE="$HF_HOME"
 export TORCH_HOME="$VSC_SCRATCH/torch_cache"

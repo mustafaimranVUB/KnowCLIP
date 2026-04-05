@@ -34,6 +34,7 @@ class TestProjectConfig:
         assert isinstance(d, dict)
         assert "model" in d
         assert "data" in d
+        assert "training" in d
 
 
 class TestModelConfig:
@@ -120,6 +121,17 @@ class TestDataConfig:
         config = DataConfig()
         assert config.batch_size == 16
         assert config.num_workers == 4
+        assert config.subset_test_ratio == 0.1
+
+
+class TestTrainingConfig:
+    def test_two_stage_defaults(self):
+        config = TrainingConfig()
+        assert config.two_stage_training is False
+        assert config.stage1_epochs == 0
+        assert config.stage1_freeze_visual_encoder is True
+        assert config.stage1_freeze_classification_head is True
+        assert config.generation_debug_samples == 3
 
 
 class TestKGPipelineConfig:
