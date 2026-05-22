@@ -57,7 +57,7 @@ Core capabilities:
   ┌───────────┐           ┌──────────────┐                 │
   │ Chest     │           │  Knowledge   │                 │
   │ X-Ray     │           │  Graph (.pt) │                 │
-  │ (DICOM)   │           │              │                 │
+  │ (JPG/PNG) │           │              │                 │
   └─────┬─────┘           └──────┬───────┘                 │
         │                        │                         │
         ▼                        ▼                         │
@@ -79,9 +79,9 @@ Core capabilities:
         ┌───────┴────────────────────┐                     │
         ▼                            ▼                     │
   ┌───────────┐            ┌──────────────┐                │
-  │ Self-Attn │            │ Transformer  │                │
-  │ Pooling + │            │   Report     │◄───────────────┘
-  │ Classif.  │            │  Decoder     │ (teacher forcing)
+  │ Self-Attn │            │ GPT-2 Report │                │
+  │ Pooling + │            │  Decoder +   │◄───────────────┘
+  │ Classif.  │            │  xattn       │ (teacher forcing)
   │ Head      │            │              │
   └─────┬─────┘            └──────┬───────┘
         │                         │
@@ -183,7 +183,7 @@ pip install -r requirements.txt
 
 4. **Verify installation**
 ```bash
-python main.py validate
+python -m main validate
 ```
 
 Expected output:
@@ -259,104 +259,96 @@ Key files needed:
 
 ## Usage
 
-### Phase I — Knowledge Graph Construction
-
-Phase I processes radiology reports to build a medical knowledge graph:
-
-1. Loads report text (Impression → Findings fallback)
-2. Extracts entities and relations via **RadGraph-XL** (ModernBERT backbone)
-3. Filters out measurement entities
-4. Grounds entities to **UMLS CUI codes** via exact match on MRCONSO.RRF
-5. Embeds entity text with **SapBERT** (768-dim vectors)
-6. Builds **PyTorch Geometric** graph objects (per-report + global)
-7. Validates and saves all artifacts as `.pt` files
+### Local verification first
 
 ```bash
-# Local (small run for development/testing)
-python main.py phase1 --config configs/phase1_kg_local.yaml --max-studies 100
+python -m main validate
+python -m pytest tests/ -q
+```
 
-# Full run on HPC
+Current verified local result in this workspace:
+- `116 passed, 3 skipped, 3 warnings`
+- `python -m main validate` completed successfully on CPU
+
+### Phase I — Knowledge graph construction
+
+```bash
+# Local smoke test / development run
+python -m main --config configs/phase1_kg_local.yaml phase1 --max-studies 100
+
+# Hydra full run
 sbatch scripts/hydra/run_phase1.sh
 ```
 
-**Configuration** (`configs/phase1_kg.yaml`):
-```yaml
-kg_pipeline:
-  mrconso_path: "${VSC_DATA}/umls/2025AB/META/MRCONSO.RRF"
-  mrsty_path: "${VSC_DATA}/umls/2025AB/META/MRSTY.RRF"
-  radgraph_model_type: "modern-radgraph-xl"
-  top_k_candidates: 5
-```
+Primary Phase I outputs in `outputs/KG/`:
+- `extractions.pt`
+- `grounding.pt`
+- `embeddings.pt`
+- `report_graphs.pt`
+- `global_kg.pt`
+- `grounding_summary.csv`
+- `study_metadata.pt`
+- `phase1_summary.json`
 
-**Output** (`outputs/KG/`):
-
-| Artifact | Format | Description |
-|----------|--------|-------------|
-| `extractions.pt` | `torch.save` | Per-report entities and triples from RadGraph-XL |
-| `grounding.pt` | `torch.save` | Entity → UMLS CUI mapping results |
-| `embeddings.pt` | `torch.save` | SapBERT 768-dim node embeddings |
-| `report_graphs.pt` | `torch.save` | Per-study PyG `Data` objects |
-| `global_kg.pt` | PyG `Data` | Merged global knowledge graph |
-| `cui_coverage.csv` | CSV | Human-readable coverage statistics |
-| `grounding_summary.csv` | CSV | Grounding quality metrics |
-| `study_metadata.pt` | `torch.save` | Valid study list and metadata |
-| `phase1_summary.json` | JSON | Pipeline run summary and validation results |
-
-### Phase II — Model Training
-
-#### Baseline Training (Classification Only)
+### Phase II — Training
 
 ```bash
-# Local (CPU, for testing only)
-python main.py train --config configs/phase2_baseline.yaml
+# Baseline
+python -m main --config configs/phase2_baseline.yaml train
 
-# HPC (GPU)
+# Main local/subset neuro-symbolic GPT-2 run
+python -m main --config configs/phase2_neurosymbolic_gpt2.yaml train
+
+# Hydra baseline
 sbatch scripts/hydra/train_baseline.sh
-```
 
-#### Neuro-Symbolic Training (Full KG + Report Generation)
-
-```bash
-# HPC (GPU)
+# Hydra main neuro-symbolic run
 sbatch scripts/hydra/train_neurosymbolic.sh
 ```
 
-**Key config differences:**
-
-| Parameter | Baseline | Neuro-Symbolic |
-|-----------|----------|----------------|
-| `use_kg` | `false` | `true` |
-| `enable_report_generation` | `false` | `true` |
-| `generation_loss_weight` | `0.0` | `1.0` |
-| Knowledge encoder | None | GATv2 (2 layers, 4 heads) |
-| Fusion module | None | Cross-attention (2 layers, 8 heads) |
-
-### Evaluation
+### Evaluation, explainability, audit, and comparison
 
 ```bash
-# Evaluate baseline
-python main.py evaluate \
-    --config configs/phase2_baseline.yaml \
-    --checkpoint outputs/checkpoints/baseline/best_model.pt
+# Evaluate a checkpoint and export metrics/plots
+python -m main --config configs/phase2_neurosymbolic_gpt2.yaml evaluate \
+  --checkpoint outputs/checkpoints/best_model.pt \
+  --output-dir outputs/evaluation/manual_run
 
-# Evaluate neuro-symbolic
-python main.py evaluate \
-    --config configs/phase2_neurosymbolic.yaml \
-    --checkpoint outputs/checkpoints/neurosymbolic/best_model.pt
+# Export sample-level explainability figures
+python -m main --config configs/phase2_neurosymbolic_gpt2.yaml explain \
+  --checkpoint outputs/checkpoints/best_model.pt \
+  --split test \
+  --max-samples 8 \
+  --output-dir outputs/explainability/manual_run
+
+# Audit split coverage and report distributions
+python -m main --config configs/phase2_neurosymbolic_gpt2.yaml audit-data \
+  --output-dir outputs/data_audit/manual_run
+
+# Compare two evaluated runs
+python -m main compare \
+  --eval-a outputs/evaluation/baseline_run \
+  --eval-b outputs/evaluation/ns_run \
+  --label-a baseline \
+  --label-b ns \
+  --output-dir outputs/comparisons/baseline_vs_ns
 ```
 
-**Metrics computed:**
-- **Classification**: Per-class AUC-ROC, macro AUC-ROC, F1 at optimal threshold
-- **Report Generation**: BLEU-1/2/4, ROUGE-1/2/L, BERTScore, F1-RadGraph
-- **Statistical Tests**: McNemar's test (baseline vs NS), bootstrap 95% CI, Bonferroni correction
-
-### Quick Validation (No Data Required)
+### Single-image inference
 
 ```bash
-python main.py validate
+python -m main --config configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml predict \
+  --checkpoint outputs/checkpoints/best_model.pt \
+  --image-path /absolute/path/to/image.jpg \
+  --output-dir outputs/predict/manual_run \
+  --save-explainability
 ```
 
-Runs 7 checks with dummy data on CPU — verifies imports, model forward passes, graph construction, loss computation, and metrics.
+### Knowledge graph viewer
+
+```bash
+python scripts/visualize_kg.py --artifact-dir outputs/KG --port 8502
+```
 
 ---
 
@@ -364,150 +356,79 @@ Runs 7 checks with dummy data on CPU — verifies imports, model forward passes,
 
 ```
 Clone repo/
-├── main.py                          # CLI entry point (phase1/train/evaluate/validate)
-├── requirements.txt                 # Pinned production dependencies
-├── requirements-dev.txt             # Dev/test dependencies
-├── README.md                        # This file
-├── LICENSE
-│
+├── main.py                          # CLI entry point (phase1/train/evaluate/explain/audit-data/predict/compare/validate)
 ├── configs/
-│   ├── phase1_kg.yaml               # Phase I — KG pipeline (HPC paths)
-│   ├── phase1_kg_local.yaml         # Phase I — KG pipeline (local paths)
-│   ├── phase1_kg_gpu.yaml           # Phase I — KG pipeline (GPU partition)
-│   ├── phase2_baseline.yaml         # Phase II — baseline training
-│   └── phase2_neurosymbolic.yaml    # Phase II — neuro-symbolic training
-│
+│   ├── phase1_kg.yaml
+│   ├── phase1_kg_gpu.yaml
+│   ├── phase1_kg_local.yaml
+│   ├── phase2_baseline.yaml
+│   ├── phase2_neurosymbolic.yaml
+│   ├── phase2_neurosymbolic_gpt2.yaml
+│   ├── hydra_phase2_baseline_jpg.yaml
+│   ├── hydra_phase2_neurosymbolic_gpt2_jpg.yaml
+│   └── ablation_*.yaml
 ├── src/
-│   ├── __init__.py                  # Package root (version 0.2.0)
-│   ├── core/
-│   │   ├── config.py                # Dataclass configs + YAML overlay system
-│   │   └── utils.py                 # Seed, device, logging utilities
-│   ├── data/
-│   │   ├── dataset.py               # MIMICCXRDataset + collate_mimic
-│   │   ├── dicom_loader.py          # DICOM → preprocessed tensor
-│   │   ├── report_loader.py         # Report text extraction and section parsing
-│   │   ├── splits.py                # Patient-level data splitting
-│   │   └── transforms.py            # Train/eval image augmentations
-│   ├── knowledge/
-│   │   ├── extraction.py            # RadGraph-XL entity/relation extraction
-│   │   ├── ontology_grounding.py    # UMLS exact-match grounding (MRCONSO)
-│   │   ├── embeddings.py            # SapBERT 768-dim node embeddings
-│   │   └── graph_builder.py         # PyG graph construction + validation
-│   ├── models/
-│   │   ├── interfaces.py            # Abstract base classes (ABCs)
-│   │   ├── visual_encoder.py        # CLIPVisualEncoder (BioMedCLIP ViT-B/16)
-│   │   ├── knowledge_encoder.py     # GATv2KnowledgeEncoder
-│   │   ├── fusion.py                # CrossAttentionFusion
-│   │   ├── classification.py        # ClassificationHead (14-class CheXpert)
-│   │   ├── decoder.py               # TransformerReportDecoder
-│   │   └── model_factory.py         # MedicalVLM + build_model()
-│   ├── training/
-│   │   ├── losses.py                # MultiTaskLoss (BCE + CE)
-│   │   ├── scheduler.py             # Linear warmup + cosine decay
-│   │   └── trainer.py               # Training loop + checkpointing
-│   ├── evaluation/
-│   │   ├── classification_metrics.py # AUC-ROC, F1, thresholds
-│   │   ├── generation_metrics.py    # BLEU, ROUGE, BERTScore
-│   │   └── statistical_tests.py     # McNemar, bootstrap CI, Bonferroni
-│   └── pipelines/
-│       ├── hybrid_kg_pipeline.py    # Phase I orchestrator
-│       └── training_pipeline.py     # Phase II orchestrator
-│
-├── tests/                           # 84 unit tests (pytest)
-│   ├── conftest.py
-│   ├── test_config.py
-│   ├── test_evaluation.py
-│   ├── test_extraction.py
-│   ├── test_graph_builder.py
-│   ├── test_model_factory.py
-│   ├── test_modules.py
-│   ├── test_training.py
-│   └── test_transforms.py
-│
+│   ├── data/                        # dataset, splits, transforms, report/image loading
+│   ├── knowledge/                   # extraction, grounding, embeddings, graph building
+│   ├── models/                      # visual encoder, GATv2 encoder, fusion, classifier, decoder
+│   ├── training/                    # losses, scheduler, trainer
+│   ├── evaluation/                  # metrics, explainability, artifact export, statistics
+│   └── pipelines/                   # training, explainability, inference, audit, comparison, phase1
 ├── scripts/
-│   ├── hydra/                       # SLURM job scripts for Hydra HPC
-│   │   ├── setup_env.sh
-│   │   ├── download_physionet.sh
-│   │   ├── preprocess_dicom.sh
-│   │   ├── run_phase1.sh
-│   │   ├── train_baseline.sh
-│   │   ├── train_neurosymbolic.sh
-│   │   └── umls_download.sh
-│   └── local/
-│       └── run.sh                   # Local development runner
-│
-├── notebooks/
-│   ├── Completed/
-│   │   └── PhaseI_Hybrid_KG_RadGraph_UMLS.ipynb
-│   └── complementary/              # Exploration notebooks
-│
-├── data/                            # Data directory (gitignored)
-│   ├── MIMIC-CXR-RRG_reports/      # Radiology report text files (PhysioNet)
-│   │   ├── cxr-record-list.csv     # 377K record mapping
-│   │   └── files/p10..p19/         # Report text by patient
-│   └── umls-2025AB-metathesaurus-full/
-│       └── 2025AB/META/            # MRCONSO.RRF, MRSTY.RRF, etc.
-│
-└── outputs/                         # Generated artifacts (gitignored)
-    ├── KG/                          # Phase I knowledge graph artifacts
-    ├── checkpoints/                 # Model checkpoints
-    └── logs/                        # Training logs
+│   ├── hydra/                       # run_phase1, train/evaluate/explain launchers, ablation submitters
+│   └── visualize_kg.py              # KG viewer launcher
+├── kg_viewer/                       # Streamlit KG viewer
+├── tests/                           # 116 tests, 3 skipped in the current validated state
+├── documents/                       # runbook, checklist, audits, methodology docs
+└── .aiglobal/                       # AI-facing project guides and design notes
 ```
 
 ---
 
 ## Infrastructure
 
-### Hydra HPC Cluster (VUB VSC Tier-2)
+### Hydra HPC cluster
 
-All GPU training and large-scale processing runs on the Hydra HPC cluster:
+| Partition | Hardware | Typical use |
+|-----------|----------|-------------|
+| `ampere_gpu` | NVIDIA A100 40GB | Main Phase II training |
+| `hopper_gpu` | NVIDIA H200 140GB | Large-batch experiments |
+| `zen4` / `zen5` | CPU-only | Phase I and heavy preprocessing |
 
-| Partition | GPUs | VRAM | Use Case |
-|-----------|------|------|----------|
-| `ampere_gpu` | 2× NVIDIA A100 | 40 GB | Model training (primary) |
-| `hopper_gpu` | 2× NVIDIA H200 | 140 GB | Large batch training |
-| `pascal_gpu` | 2× NVIDIA P100 | 16 GB | Small experiments |
-| `zen4` / `zen5` | CPU only | 384+ GB RAM | Phase I KG, DICOM preprocessing |
+Storage conventions:
 
-**Storage layout:**
+| Path | Purpose |
+|------|---------|
+| `$VSC_HOME` | Code, configs, lightweight scripts |
+| `$VSC_DATA` | Persistent KG artifacts, checkpoints, environments |
+| `$VSC_SCRATCH` | Large caches and dataset staging |
 
-| Path | Purpose | Persistence |
-|------|---------|-------------|
-| `$VSC_HOME` | Code, configs, scripts | Persistent, backed up |
-| `$VSC_DATA` | UMLS, KG artifacts, checkpoints | Persistent, not backed up |
-| `$VSC_SCRATCH` | MIMIC-CXR DICOMs, temp files | Auto-purged (~30 days) |
+### Local environment
 
-### Local Development
-
-Used for code editing, small-scale debugging (≤100 samples, CPU), and documentation. Any experiment touching >500 samples or requiring GPU **must** run on Hydra.
+Local CPU execution is intended for code verification, dummy-data validation, synthetic explainability/export tests, and small subset runs.
 
 ---
 
 ## Testing
 
 ```bash
-# Run all tests (84 tests)
-python -m pytest tests/ -v
+# Full suite
+python -m pytest tests/ -q
 
-# Run specific modules
-python -m pytest tests/test_extraction.py -v       # Entity extraction
-python -m pytest tests/test_graph_builder.py -v    # KG construction
-python -m pytest tests/test_model_factory.py -v    # Model build + forward
+# Focused runtime/launcher checks
+python -m pytest tests/test_runtime_surfaces.py tests/test_hydra_scripts.py -q
 
-# With coverage
-python -m pytest tests/ --cov=src --cov-report=term-missing
+# Focused figure/export checks
+python -m pytest tests/test_explainability.py tests/test_evaluation.py tests/test_kg_viewer.py -q
 ```
 
-| Test File | Coverage |
-|-----------|----------|
-| `test_config.py` | Config dataclass defaults, YAML overlay, nested overrides |
-| `test_extraction.py` | Text normalization, entity parsing, filtering |
-| `test_graph_builder.py` | Graph construction, deduplication, validation |
-| `test_model_factory.py` | Model build, forward pass shapes, gradient flow |
-| `test_modules.py` | Individual model components |
-| `test_training.py` | MultiTaskLoss, scheduler warmup curves |
-| `test_evaluation.py` | Classification/generation metrics, statistical tests |
-| `test_transforms.py` | Image transforms, determinism |
+Current validated status in this workspace:
+- `116 passed, 3 skipped, 3 warnings`
+- Hydra launcher regression tests pass
+- Explainability exporter tests pass
+- KG viewer tests pass
+
+The skipped tests are network-dependent surfaces that require external model downloads.
 
 ---
 
@@ -515,49 +436,57 @@ python -m pytest tests/ --cov=src --cov-report=term-missing
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `torch` | 2.4.0 | Core ML framework |
-| `transformers` | 4.57.3 (pinned!) | RadGraph-XL (ModernBERT backbone) |
-| `torch-geometric` | 2.6.0 | GATv2Conv knowledge encoder |
-| `radgraph` | ≥0.1.0 | Medical entity/relation extraction |
-| `sentence-transformers` | ≥2.2.0 | SapBERT node embeddings |
-| `scikit-learn` | ≥1.3.0 | AUC-ROC, F1 metrics |
-| `nltk` | ≥3.8.0 | BLEU score computation |
-| `rouge-score` | ≥0.1.2 | ROUGE metrics |
-
-See [requirements.txt](requirements.txt) for the complete pinned dependency list.
+| `torch` | 2.x | Core ML framework |
+| `transformers` | 4.57.3 (pinned) | RadGraph compatibility |
+| `torch-geometric` | 2.7.0 | GATv2 knowledge encoder |
+| `open-clip-torch` | current pinned repo version | BioMedCLIP backbone loading |
+| `scikit-learn` | 1.x | Classification metrics |
+| `rouge-score` | 0.1.x | ROUGE metrics |
 
 ---
 
 ## Configuration System
 
-All hyperparameters are managed via Python dataclasses with YAML overlay:
+The repository uses dataclass defaults overlaid by YAML files.
 
 ```python
 from src.core.config import load_config, get_baseline_config, get_neurosymbolic_config
 
-# Load from YAML (overrides dataclass defaults)
-config = load_config("configs/phase2_neurosymbolic.yaml")
-
-# Or use preset factories
-baseline = get_baseline_config()       # use_kg=False, classification only
-ns = get_neurosymbolic_config()        # use_kg=True, classification + generation
+config = load_config("configs/phase2_neurosymbolic_gpt2.yaml")
+baseline = get_baseline_config()
+neurosymbolic = get_neurosymbolic_config()
 ```
 
-YAML files only need to specify values that differ from defaults.
+Important operational configs:
+- `configs/phase2_baseline.yaml`: local/subset baseline
+- `configs/phase2_neurosymbolic_gpt2.yaml`: main local/subset neuro-symbolic run
+- `configs/hydra_phase2_baseline_jpg.yaml`: main Hydra baseline
+- `configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml`: main Hydra neuro-symbolic run
+
+---
+
+## Canonical Documents
+
+Start with these files:
+- `documents/CURRENT_ARCHITECTURE_AND_RUNBOOK.md`
+- `documents/THESIS_RESEARCH_CHECKLIST.md`
+- `documents/EXPLAINABILITY_AND_FIGURE_AUDIT.md`
+- `documents/DOCUMENTATION_AND_RUNBOOK_AUDIT.md`
+
+These are the authoritative references for the current codebase. Older methodology and analysis documents in `documents/` should be treated as historical unless they explicitly state they are current.
 
 ---
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `AttributeError: TokenizersBackend` | Install exact version: `pip install transformers==4.57.3` |
-| `KeyError: 'modernbert'` | Same — transformers version mismatch |
-| `radgraph not installed` | `pip install --force-reinstall --no-cache-dir radgraph` |
-| `torch_geometric not found` | `pip install torch-geometric` |
-| `MRCONSO.RRF not found` | Download UMLS 2025AB from NLM and place in `data/umls-2025AB-metathesaurus-full/2025AB/META/` |
-| `OOM during training` | Reduce `batch_size` in config or increase `accumulation_steps` |
-| `OOM during graph construction` | Use `--max-studies N` to limit processing |
+| Issue | Current guidance |
+|-------|------------------|
+| `transformers` mismatch | Keep `transformers==4.57.3` pinned for RadGraph compatibility |
+| `torch_geometric` missing | Install the version from `requirements.txt` / `requirements-dev.txt` |
+| OOM during training | Reduce `batch_size` or raise `accumulation_steps` |
+| Missing UMLS files | Place 2025AB files under `data/umls-2025AB-metathesaurus-full/2025AB/META/` or the configured Hydra path |
+| Missing optional generation metrics | `METEOR` needs NLTK `wordnet`; `BERTScore` needs `bert_score`; `CIDEr` needs `aac_metrics` |
+| Hydra launcher mismatch | Use the maintained `scripts/hydra/*.sh` files; they are regression-tested by `tests/test_hydra_scripts.py` |
 
 ---
 

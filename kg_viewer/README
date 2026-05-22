@@ -1,0 +1,252 @@
+# Knowledge Graph Viewer
+
+This viewer is a standalone app for exploring Phase I knowledge graph outputs.
+
+It supports both of these workflows:
+
+- global graph inspection from `global_kg.pt`
+- per-study graph inspection from `report_graphs.pt`, with extracted study graphs cached for reuse
+
+The current Phase I artifacts validated in this workspace have these top-level graph statistics:
+
+- `14,587` nodes
+- `141,991` unique weighted edges
+- `5,656,756` raw edge occurrences
+- relations: `modify`, `located_at`, `associated_with`, `suggestive_of`, `self_loop`
+- node types: `observation`, `anatomy`, `measurement`
+- certainty labels: `definitely_present`, `uncertain`, `definitely_absent`
+
+## What the viewer does
+
+- search nodes by text or UMLS CUI
+- filter by relation type and node type
+- narrow by source node and target node
+- render a bounded interactive PyVis subgraph instead of trying to draw the full KG
+- browse a single study graph by study key, subject ID, or study ID
+- inspect weighted edges, top nodes, top relations, grounding matches, and certainty counts
+- audit the Phase I run summary and the saved Phase I log
+- export matched nodes and matched relations as CSV
+
+## Files
+
+The viewer code lives in:
+
+- `scripts/visualize_kg.py`: launcher script
+- `kg_viewer/app.py`: Streamlit app, graph indexing, filtering, per-study extraction, and rendering logic
+- `kg_viewer/requirements.txt`: minimal viewer-only runtime dependencies
+
+## Which `outputs/KG` files are used
+
+### Required
+
+- `outputs/KG/global_kg.pt`
+
+This is the only mandatory artifact. The viewer expects a PyTorch Geometric `Data` object with graph structure and node metadata such as `edge_index`, `edge_type`, `node_texts`, `node_cuis`, and `node_types`.
+
+If the graph already contains `collapsed_edge_index`, `collapsed_edge_type`, and `collapsed_edge_weight`, those weighted unique edges are used directly. Otherwise, duplicate raw edges are collapsed on load.
+
+### Optional but supported
+
+- `outputs/KG/phase1_summary.json`
+	Used for the Phase I summary cards in the `Overview` tab.
+
+- `outputs/KG/study_metadata.pt`
+	Enables study search and the grounding lookup panel.
+
+- `outputs/KG/report_graphs.pt`
+	Enables per-study browsing. The viewer does not keep this full monolithic archive in memory. Instead, it extracts the selected study graph in a short-lived worker process and caches the result.
+
+- `outputs/KG_outputs/logs/phase1_*.log`
+	Preferred location for the Phase I log audit.
+
+- `outputs/logs/phase1*.log` or `outputs/KG/logs/phase1*.log`
+	Fallback log locations if the primary Phase I log directory is unavailable.
+
+### Generated cache
+
+- `outputs/KG/.kg_viewer_cache/study_graphs/*.pt`
+
+When you load a study in per-study mode, the selected graph is extracted into this cache path so later loads of the same study are fast.
+
+## Install
+
+Install only the viewer dependencies into an existing environment:
+
+```bash
+source .venv/bin/activate
+pip install -r kg_viewer/requirements.txt
+```
+
+Or use the interpreter directly:
+
+```bash
+"/path/to/python" -m pip install -r kg_viewer/requirements.txt
+```
+
+## Run
+
+From the repository root:
+
+```bash
+source .venv/bin/activate
+python scripts/visualize_kg.py --artifact-dir outputs/KG --host 127.0.0.1 --port 8502
+```
+
+Or with an explicit interpreter:
+
+```bash
+"/path/to/python" scripts/visualize_kg.py --artifact-dir outputs/KG --host 127.0.0.1 --port 8502
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8502
+```
+
+## Command-line options
+
+User-facing options:
+
+- `--artifact-dir`: directory containing `global_kg.pt` and related Phase I outputs
+- `--host`: Streamlit bind address, default `127.0.0.1`
+- `--port`: Streamlit port, default `8501`
+
+Examples:
+
+```bash
+python scripts/visualize_kg.py --artifact-dir outputs/KG
+```
+
+```bash
+python scripts/visualize_kg.py --artifact-dir outputs/KG --port 8503
+```
+
+```bash
+python scripts/visualize_kg.py --artifact-dir /absolute/path/to/KG --host 0.0.0.0 --port 8501
+```
+
+## How to use the UI
+
+The app has four tabs:
+
+- `Overview`: graph counts, relation distribution, node-type distribution, certainty distribution, Phase I summary, and Phase I log audit
+- `Search Results`: matched nodes and relations, plus CSV export buttons
+- `Graph`: interactive PyVis subgraph for the current filtered result
+- `Diagnostics`: top nodes by degree, heaviest weighted edges, and grounding lookup
+
+Sidebar controls:
+
+- `Graph scope`: switch between the global graph and a single study graph
+- `Study key / subject / study`: search by full key such as `10000032_50414267`, by subject ID, or by study ID
+- `Load selected study graph`: explicitly load and cache the chosen study graph
+- `Node text or CUI contains`: match node text and CUI values
+- `Source node contains`: restrict edges by matching only the source side
+- `Target node contains`: restrict edges by matching only the target side
+- `Node types`: limit results to selected node types
+- `Relation types`: limit results to selected relation types
+- `Neighborhood hops`: expand one or two hops around the matched nodes before rendering
+- `Max nodes in graph panel`: hard cap for rendered nodes
+- `Max edges in graph panel`: hard cap for rendered edges
+- `Preview rows in tables`: number of rows shown in the tables
+
+The relation table includes a `weight` column. That is the number of raw edge occurrences collapsed into the displayed weighted edge.
+
+## Examples
+
+### Example 1: Global `effusion` neighborhood
+
+1. Start the app in global mode.
+2. Enter `effusion` in `Node text or CUI contains`.
+3. Leave the default relation filters enabled.
+4. Open the `Graph` tab.
+
+Validated result in this workspace: the query renders a bounded global neighborhood with the default graph limits.
+
+### Example 2: Focus on `associated_with`
+
+Use these settings:
+
+- `Node text or CUI contains`: `opacity`
+- `Relation types`: only `associated_with`
+
+This is useful for checking ontology-style or co-occurrence links that were missing from the older KG but are present in the rebuilt one.
+
+### Example 3: Inspect a single study
+
+1. Switch `Graph scope` to `Per-study graph`.
+2. Enter `10000032_50414267` in `Study key / subject / study`.
+3. Click `Load selected study graph`.
+4. Open the `Graph` tab.
+
+Validated result in this workspace: the selected study graph loads with `29` nodes, `53` unique edges, and `53` raw edges.
+
+### Example 4: Grounding lookup
+
+Open the `Diagnostics` tab and enter a mention substring in `Mention contains` to inspect `mention2cui` matches from `study_metadata.pt`.
+
+### Example 5: Phase I audit
+
+Open the `Overview` tab to inspect both `phase1_summary.json` and the saved Phase I log. The viewer surfaces run status, report counts, grounding coverage, elapsed time, and graph validation status.
+
+## Phase I audit for the rebuilt KG
+
+The viewer was validated against the current saved Phase I run:
+
+- log path: `outputs/KG_outputs/logs/phase1_12022057.log`
+- studies: `227,835`
+- reports loaded: `227,835`
+- total entities: `6,364,307`
+- total triples: `4,534,841`
+- grounding coverage: `94.09%`
+- graph validation: passed, `13,202 / 14,587` nodes in the giant component
+- elapsed time: `20,033.0 s`
+
+## Performance notes
+
+The global view is driven by `global_kg.pt`, which is small enough to load directly.
+
+Per-study browsing is different because `report_graphs.pt` is a single large archive of roughly `17 GB`. Loading that archive directly into the Streamlit process is expensive, so the viewer does this instead:
+
+- waits for an explicit `Load selected study graph` action
+- extracts the selected study graph in a short-lived worker process
+- saves the extracted graph under `outputs/KG/.kg_viewer_cache/study_graphs/`
+- reuses that cached extracted graph on later loads
+
+On the current local validation machine, the first extraction of one study took about `2 minutes`. Reopening the same study after the cache exists is much faster.
+
+## Troubleshooting
+
+### The app does not start
+
+Check that these files exist:
+
+- `kg_viewer/app.py`
+- `scripts/visualize_kg.py`
+- `outputs/KG/global_kg.pt`
+
+Then confirm the environment has the viewer dependencies installed.
+
+### Per-study mode is unavailable
+
+Check for:
+
+- `outputs/KG/study_metadata.pt`
+- `outputs/KG/report_graphs.pt`
+
+Without those files, the viewer stays in global-only mode.
+
+### The first per-study load is slow
+
+That is expected for the first extraction of an uncached study from the monolithic `report_graphs.pt` archive. After extraction, the cached file is reused.
+
+### The graph tab is empty
+
+Usually one of these is true:
+
+- the current filters matched no nodes or no relations
+- the current query is too broad and the app is asking for a narrower selection
+- the selected node types or relation types exclude the pattern you want
+
+Try a narrower search such as `effusion`, `opacity`, `cardiomegaly`, or a known CUI.
+

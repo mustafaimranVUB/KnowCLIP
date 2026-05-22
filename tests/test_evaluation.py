@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from src.evaluation.artifact_export import save_evaluation_artifacts
 from src.evaluation.classification_metrics import ClassificationEvaluator
 from src.evaluation.statistical_tests import (
     bonferroni_correction,
@@ -154,3 +155,74 @@ class TestBonferroniCorrection:
         assert corrected[0]["significant"] is True
         # Second should NOT be significant (0.02 * 4 = 0.08 > 0.05)
         assert corrected[1]["significant"] is False
+
+
+class TestEvaluationArtifactExport:
+    def test_save_evaluation_artifacts_creates_outputs(self, tmp_path):
+        results = {
+            "classification": {
+                "macro": {"auc_roc": 0.81, "f1": 0.73},
+                "micro": {"auc_roc": 0.84, "f1": 0.76},
+                "per_class": {
+                    "atelectasis": {"auc_roc": 0.82, "f1": 0.71, "average_precision": 0.77},
+                    "cardiomegaly": {"auc_roc": 0.88, "f1": 0.79, "average_precision": 0.83},
+                },
+            },
+            "generation": {
+                "bleu_1": 0.22,
+                "rouge_l": 0.31,
+                "bertscore_f1": 0.85,
+                "f1_radgraph": 0.19,
+            },
+        }
+
+        artifacts = save_evaluation_artifacts(results, tmp_path)
+
+        assert (tmp_path / "metrics.json").exists()
+        assert (tmp_path / "summary.md").exists()
+        assert (tmp_path / "classification_metrics.png").exists()
+        assert (tmp_path / "generation_metrics.png").exists()
+        assert artifacts["metrics_json"].endswith("metrics.json")
+
+    def test_save_evaluation_artifacts_exports_prediction_rows(self, tmp_path):
+        results = {
+            "classification": {
+                "macro": {"auc_roc": 0.81, "f1": 0.73},
+                "micro": {"auc_roc": 0.84, "f1": 0.76},
+                "per_class": {
+                    "atelectasis": {"auc_roc": 0.82, "f1": 0.71, "average_precision": 0.77},
+                },
+            },
+            "generation": {"bleu_1": 0.22, "rouge_l": 0.31},
+        }
+        classification_rows = [
+            {
+                "study_key": "s1",
+                "true_atelectasis": 1.0,
+                "score_atelectasis": 0.9,
+                "pred_atelectasis": 1,
+            },
+            {
+                "study_key": "s2",
+                "true_atelectasis": 0.0,
+                "score_atelectasis": 0.2,
+                "pred_atelectasis": 0,
+            },
+        ]
+        generation_rows = [
+            {"study_key": "s1", "reference_report": "normal heart", "generated_report": "normal heart"},
+            {"study_key": "s2", "reference_report": "no effusion", "generated_report": "no pleural effusion"},
+        ]
+
+        artifacts = save_evaluation_artifacts(
+            results,
+            tmp_path,
+            classification_rows=classification_rows,
+            generation_rows=generation_rows,
+        )
+
+        assert (tmp_path / "classification_predictions.csv").exists()
+        assert (tmp_path / "classification_reliability.png").exists()
+        assert (tmp_path / "generation_predictions.jsonl").exists()
+        assert artifacts["classification_predictions"].endswith("classification_predictions.csv")
+        assert artifacts["generation_predictions"].endswith("generation_predictions.jsonl")

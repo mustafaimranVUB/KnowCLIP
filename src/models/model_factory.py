@@ -70,6 +70,9 @@ class MedicalVLM(nn.Module):
         # Used when: (1) use_kg=False, or (2) KG data missing at inference
         from src.models.fusion import SelfAttentionPooling
 
+        self.concept_pooling = SelfAttentionPooling(
+            hidden_dim=visual_encoder.get_output_dim()
+        )
         self.baseline_pooling = SelfAttentionPooling(
             hidden_dim=visual_encoder.get_output_dim()
         )
@@ -104,6 +107,7 @@ class MedicalVLM(nn.Module):
             ``fused_features``, ``visual_features``, ``attention_weights``.
         """
         outputs: Dict[str, Any] = {}
+        explainability: Dict[str, Any] = {}
 
         # ----- Visual Encoding -----
         Z_v = self.visual_encoder(pixel_values)  # (B, P, D)
@@ -111,22 +115,37 @@ class MedicalVLM(nn.Module):
 
         if self.config.use_kg and self.knowledge_encoder is not None and graph_x is not None:
             # ----- Knowledge Encoding -----
-            Z_k_flat = self.knowledge_encoder(
-                graph_x, graph_edge_index, graph_edge_type, graph_batch
-            )  # (N_total, D)
+            if return_attention:
+                Z_k_flat, graph_trace = self.knowledge_encoder(
+                    graph_x,
+                    graph_edge_index,
+                    graph_edge_type,
+                    graph_batch,
+                    return_attention=True,
+                )
+                explainability["graph"] = graph_trace
+            else:
+                Z_k_flat = self.knowledge_encoder(
+                    graph_x, graph_edge_index, graph_edge_type, graph_batch
+                )  # (N_total, D)
 
             # Re-batch: (N_total, D) → (B, K_max, D) with padding
             Z_k = self._rebatch_graph(
                 Z_k_flat, graph_batch, pixel_values.shape[0]
             )  # (B, K_max, D)
+            outputs["knowledge_features"] = Z_k
+
+            counts = torch.bincount(graph_batch, minlength=pixel_values.shape[0])
+            mask = torch.arange(Z_k.shape[1], device=Z_k.device).unsqueeze(0) < counts.unsqueeze(1)  # (B, K_max)
 
             # ----- Fusion -----
             if self.fusion_module is not None:
                 if return_attention:
-                    Z_fused, attn_weights = self.fusion_module(
+                    Z_fused, fusion_trace = self.fusion_module(
                         Z_k, Z_v, return_attention=True
                     )
-                    outputs["attention_weights"] = attn_weights
+                    outputs["attention_weights"] = fusion_trace["last_layer"]
+                    explainability["fusion"] = fusion_trace
                 else:
                     Z_fused = self.fusion_module(Z_k, Z_v)
             else:
@@ -134,17 +153,41 @@ class MedicalVLM(nn.Module):
 
             outputs["fused_features"] = Z_fused
 
-            # Masked mean pool — only over actual (non-padding) nodes.
-            counts = torch.bincount(graph_batch, minlength=pixel_values.shape[0])
-            mask = torch.arange(Z_fused.shape[1], device=Z_fused.device).unsqueeze(0) < counts.unsqueeze(1)  # (B, K_max)
-            mask_f = mask.unsqueeze(-1).float()  # (B, K_max, 1)
-            pooled = (Z_fused * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)  # (B, D)
+            # Methodology-aligned concept pooling with explicit attention weights.
+            if return_attention:
+                pooled, pooling_weights = self.concept_pooling(
+                    Z_fused,
+                    mask=mask,
+                    return_attention=True,
+                )
+                explainability["pooling"] = {
+                    "weights": pooling_weights,
+                    "mask": mask,
+                }
+            else:
+                pooled = self.concept_pooling(Z_fused, mask=mask)
 
         else:
             # ----- Baseline (no KG) -----
-            pooled = self.baseline_pooling(Z_v)  # (B, D)
+            if return_attention:
+                pooled, pooling_weights = self.baseline_pooling(
+                    Z_v,
+                    return_attention=True,
+                )
+                explainability["pooling"] = {
+                    "weights": pooling_weights,
+                    "mask": torch.ones(
+                        Z_v.shape[0],
+                        Z_v.shape[1],
+                        dtype=torch.bool,
+                        device=Z_v.device,
+                    ),
+                }
+            else:
+                pooled = self.baseline_pooling(Z_v)  # (B, D)
             Z_fused = None
             outputs["fused_features"] = None
+            outputs["knowledge_features"] = None
 
         # ----- Classification -----
         if self.classification_head is not None and self.config.enable_classification:
@@ -166,13 +209,31 @@ class MedicalVLM(nn.Module):
                 encoder_padding_mask = torch.cat([kg_pad, vis_pad], dim=1)  # (B, K+P)
             else:
                 decoder_context = Z_v  # baseline: visual patches only
-            generation_logits = self.decoder(
-                decoder_context,
-                target_ids,
-                teacher_forcing_ratio=teacher_forcing_ratio,
-                encoder_padding_mask=encoder_padding_mask,
-            )
+            if return_attention:
+                generation_result = self.decoder(
+                    decoder_context,
+                    target_ids,
+                    teacher_forcing_ratio=teacher_forcing_ratio,
+                    encoder_padding_mask=encoder_padding_mask,
+                    return_attention=True,
+                )
+                if isinstance(generation_result, tuple):
+                    generation_logits, decoder_trace = generation_result
+                else:
+                    generation_logits, decoder_trace = generation_result, None
+                if decoder_trace is not None:
+                    explainability["decoder"] = decoder_trace
+            else:
+                generation_logits = self.decoder(
+                    decoder_context,
+                    target_ids,
+                    teacher_forcing_ratio=teacher_forcing_ratio,
+                    encoder_padding_mask=encoder_padding_mask,
+                )
             outputs["generation_logits"] = generation_logits
+
+        if return_attention:
+            outputs["explainability"] = explainability
 
         return outputs
 
@@ -183,14 +244,14 @@ class MedicalVLM(nn.Module):
         graph_edge_index: Optional[torch.Tensor] = None,
         graph_edge_type: Optional[torch.Tensor] = None,
         graph_batch: Optional[torch.Tensor] = None,
-        max_length: int = 128,
+        max_length: Optional[int] = None,
     ) -> List[List[int]]:
         """Generate reports auto-regressively.
 
         Args:
             pixel_values: ``(B, 3, H, W)`` images.
             graph_*: Optional graph tensors.
-            max_length: Max tokens.
+            max_length: Max tokens. If None, uses config ``max_report_length``.
 
         Returns:
             List of generated token ID sequences.
@@ -224,7 +285,8 @@ class MedicalVLM(nn.Module):
         else:
             context = Z_v
 
-        return self.decoder.generate(context, max_length=max_length, encoder_padding_mask=encoder_padding_mask)
+        decode_len = int(max_length) if max_length is not None else int(self.config.report_generation.max_report_length)
+        return self.decoder.generate(context, max_length=decode_len, encoder_padding_mask=encoder_padding_mask)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -253,13 +315,14 @@ class MedicalVLM(nn.Module):
         K_max = int(counts.max().item())
         result = torch.zeros(batch_size, K_max, D, device=device)
 
-        # Compute per-node position within its sample
-        offsets = torch.zeros(node_embeddings.shape[0], dtype=torch.long, device=device)
-        seen = torch.zeros(batch_size, dtype=torch.long, device=device)
-        for i in range(node_embeddings.shape[0]):
-            b = batch_vector[i]
-            offsets[i] = seen[b]
-            seen[b] += 1
+        # Vectorised per-node position within its sample (replaces Python loop).
+        # For each node, compute its index within the batch-group using
+        # cumulative counting: ones-per-sample → cumsum → subtract base offset.
+        ones = torch.ones(node_embeddings.shape[0], dtype=torch.long, device=device)
+        cumsum = torch.cumsum(ones, dim=0)  # 1-based running count
+        batch_starts = torch.zeros(batch_size + 1, dtype=torch.long, device=device)
+        batch_starts[1:] = torch.cumsum(counts, dim=0)
+        offsets = cumsum - 1 - batch_starts[batch_vector]
 
         result[batch_vector, offsets] = node_embeddings
 

@@ -17,6 +17,8 @@ from PIL import Image as PILImage
 
 logger = logging.getLogger(__name__)
 
+RASTER_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
 # ---------------------------------------------------------------------------
 # Default windowing for CXR (centre / width)
 # ---------------------------------------------------------------------------
@@ -70,6 +72,18 @@ class DICOMLoader:
     # Public API
     # ------------------------------------------------------------------
 
+    def load_image(self, image_path: Path | str) -> Optional[PILImage.Image]:
+        """Load either a DICOM or a raster image into a preprocessed PIL image.
+
+        This keeps the dataset path resolution flexible so the same training
+        pipeline can ingest native MIMIC-CXR DICOMs or the MIMIC-CXR-JPG
+        release, which preserves the same study/image identifiers.
+        """
+        path = Path(image_path)
+        if path.suffix.lower() in RASTER_IMAGE_SUFFIXES:
+            return self.load_raster_image(path)
+        return self.load_dicom(path)
+
     def load_dicom(self, dicom_path: Path | str) -> Optional[PILImage.Image]:
         """Load a single DICOM file and return a preprocessed PIL Image.
 
@@ -116,6 +130,25 @@ class DICOMLoader:
 
         except Exception as exc:
             logger.warning("Failed to load DICOM %s: %s", dicom_path, exc)
+            return None
+
+    def load_raster_image(self, image_path: Path | str) -> Optional[PILImage.Image]:
+        """Load a JPG/PNG-style image and normalise it to the dataset PIL format.
+
+        MIMIC-CXR-JPG images are already derived from the corresponding DICOMs,
+        so we preserve their grayscale content and align the output shape with the
+        DICOM code path by resizing and converting back to RGB.
+        """
+        try:
+            with PILImage.open(image_path) as image:
+                grayscale = image.convert("L")
+                resized = grayscale.resize(
+                    (self.image_size, self.image_size),
+                    resample=PILImage.Resampling.BILINEAR,
+                )
+                return resized.convert("RGB")
+        except Exception as exc:
+            logger.warning("Failed to load raster image %s: %s", image_path, exc)
             return None
 
     def load_preprocessed(self, tensor_path: Path | str) -> Optional[torch.Tensor]:

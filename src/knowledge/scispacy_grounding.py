@@ -306,6 +306,44 @@ class ScispaCyGrounder:
     # Installation helper (standalone utility)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def is_available(cache_dir: Optional[Path | str] = None) -> bool:
+        """Check whether the ``en_core_sci_lg`` model can be loaded.
+
+        Performs a cheap import check without actually loading the full
+        pipeline.  Returns ``True`` if the model package is importable
+        (either from *cache_dir* injected into ``sys.path`` or from the
+        standard Python path).
+        """
+        resolved = cache_dir or os.environ.get(ScispaCyGrounder.ENV_VAR, "")
+        cache_path = Path(resolved) if resolved else None
+
+        # Temporarily add cache_dir to sys.path for the probe
+        added = False
+        if cache_path is not None and cache_path.is_dir():
+            if str(cache_path) not in sys.path:
+                sys.path.insert(0, str(cache_path))
+                added = True
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec("en_core_sci_lg")
+            if spec is not None:
+                return True
+            # Also check if the model directory exists directly
+            if cache_path is not None:
+                model_subdir = cache_path / "en_core_sci_lg"
+                if model_subdir.exists():
+                    return True
+            return False
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return False
+        finally:
+            if added:
+                try:
+                    sys.path.remove(str(cache_path))
+                except ValueError:
+                    pass
+
     @classmethod
     def download_model(cls, target_dir: Path | str) -> None:
         """Download and install ``en_core_sci_lg`` to *target_dir*.

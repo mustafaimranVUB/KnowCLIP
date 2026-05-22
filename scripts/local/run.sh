@@ -4,8 +4,8 @@
 # Usage: bash scripts/local/run.sh [command] [args...]
 # Examples:
 #   bash scripts/local/run.sh validate
-#   bash scripts/local/run.sh phase1 --config configs/phase1_kg.yaml
-#   bash scripts/local/run.sh train --config configs/phase2_baseline.yaml
+#   bash scripts/local/run.sh phase1 --config configs/phase1_kg_local.yaml
+#   bash scripts/local/run.sh train --config configs/hydra_phase2_baseline_jpg.yaml
 # ============================================================
 set -euo pipefail
 

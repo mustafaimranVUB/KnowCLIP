@@ -1,22 +1,22 @@
 {
   "output_dir": "outputs/KG",
   "num_studies": 227835,
-  "num_reports_loaded": 211959,
-  "total_entities": 1939666,
-  "total_triples": 1167826,
-  "total_eligible_entities": 1932127,
+  "num_reports_loaded": 227835,
+  "total_entities": 6364307,
+  "total_triples": 4534841,
+  "total_eligible_entities": 6342360,
   "grounding_coverage": {
-    "total": 1932127,
-    "mapped": 1846408,
-    "unmapped": 85719,
-    "coverage_pct": 95.56349039167715,
-    "unique_cuis": 4161,
-    "unique_mentions": 21385
+    "total": 6342360,
+    "mapped": 5967789,
+    "unmapped": 374571,
+    "coverage_pct": 94.09413845950087,
+    "unique_cuis": 4705,
+    "unique_mentions": 13062
   },
   "graph_validation": {
     "node_feature_dim": {
       "passed": true,
-      "detail": "shape=(22530, 768)"
+      "detail": "shape=(14587, 768)"
     },
     "no_nan_features": {
       "passed": true,
@@ -28,11 +28,11 @@
     },
     "connectivity": {
       "passed": true,
-      "detail": "largest_component=16731/22530 (74.3%)"
+      "detail": "largest_component=13202/14587 (90.5%)"
     },
     "valid": true
   },
-  "elapsed_seconds": 1958.2346465587616,
+  "elapsed_seconds": 20033.029312372208,
   "artifact_paths": {
     "extractions": "outputs/KG/extractions.pt",
     "grounding": "outputs/KG/grounding.pt",

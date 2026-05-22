@@ -143,20 +143,22 @@ class ReportGenerationConfig:
 
     decoder_type: Literal["transformer", "gpt2"] = "transformer"
     vocab_size: int = 50257  # GPT-2 tokenizer default
-    max_report_length: int = 128
+    max_report_length: int = 100
     num_decoder_layers: int = 6
     decoder_dim: int = 768
     num_decoder_heads: int = 8
     decoder_ffn_dim: int = 2048
     decoder_dropout: float = 0.1
     beam_size: int = 3
-    length_penalty: float = 1.0
-    repetition_penalty: float = 1.2
-    no_repeat_ngram_size: int = 3
+    length_penalty: float = 1.2
+    repetition_penalty: float = 1.5
+    no_repeat_ngram_size: int = 4
+    prompt_prefix: str = "IMPRESSION:"
     scheduled_sampling_enabled: bool = False
     scheduled_sampling_start_ratio: float = 1.0
     scheduled_sampling_end_ratio: float = 0.7
-    scheduled_sampling_decay_epochs: int = 20
+    scheduled_sampling_decay_epochs: int = 40
+    label_smoothing: float = 0.1
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +204,7 @@ class DataConfig:
     """Paths and loading settings for MIMIC-CXR data."""
 
     mimic_root: Path = field(default_factory=lambda: Path(
-        os.environ.get("MIMIC_ROOT", "data/mimic-cxr")
+        os.environ.get("MIMIC_ROOT", "data/mimic-cxr-jpg")
     ))
     reports_root: Path = field(default_factory=lambda: Path(
         os.environ.get("MIMIC_REPORTS", "data/mimic-cxr-reports/files")
@@ -214,18 +216,26 @@ class DataConfig:
         os.environ.get("MIMIC_CHEXPERT_CSV", "data/mimic-cxr-2.0.0-chexpert.csv")
     ))
     kg_artifacts_dir: Path = Path("outputs/KG")
+    image_suffixes: List[str] = field(default_factory=lambda: [".jpg", ".jpeg", ".png"])
+    # Report text target for Phase I/II pipelines.
+    # - impression: always prefer impression, fallback to findings/body when missing
+    # - findings: always prefer findings, fallback to impression/body when missing
+    # - auto: impression-first behavior (legacy default)
+    report_section_preference: Literal["impression", "findings", "auto"] = "impression"
 
     # Split handling:
     # - official: use PhysioNet-provided split column.
     # - subset_hash: deterministic hash split over available studies.
+    # - subject_stratified: patient-level resplit with label coverage guarantees.
     # - auto: use official unless val/test available counts are too small.
-    split_strategy: Literal["official", "subset_hash", "auto"] = "auto"
+    split_strategy: Literal["official", "subset_hash", "subject_stratified", "auto"] = "auto"
     subset_seed: int = 42
     subset_train_ratio: float = 0.8
     subset_val_ratio: float = 0.1
     subset_test_ratio: float = 0.1
     auto_min_val_samples: int = 100
     auto_min_test_samples: int = 100
+    enforce_all_labels_per_split: bool = True
 
     batch_size: int = 16
     num_workers: int = 4
@@ -257,6 +267,10 @@ class TrainingConfig:
     max_pos_weight: float = 30.0
     focal_gamma: float = 2.0
     focal_alpha: Optional[float] = None
+    sampler_strategy: Literal["none", "balanced_multilabel"] = "balanced_multilabel"
+    sampler_max_weight: float = 10.0
+    sampler_rare_label_power: float = 1.0
+    optimize_thresholds_on_validation: bool = True
 
     # Two-stage training: stage-1 trains KG/fusion/generation first, then joint fine-tuning.
     two_stage_training: bool = False
@@ -273,6 +287,7 @@ class TrainingConfig:
 
     # Generation-eval debug logging.
     generation_debug_samples: int = 3
+    generation_eval_max_samples: Optional[int] = None
 
     seed: int = 42
 

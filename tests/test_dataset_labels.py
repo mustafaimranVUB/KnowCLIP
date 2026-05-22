@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from PIL import Image
 
 from src.data.dataset import MIMICCXRDataset
 
@@ -19,8 +20,9 @@ def test_dataset_maps_minus_one_to_nan(tmp_path: Path):
     (reports_root / "p10" / "p10000001").mkdir(parents=True)
     kg_dir.mkdir(parents=True)
 
-    # Only path existence is needed for indexing in this test.
-    (mimic_root / "files" / "p10" / "p10000001" / "s50000001" / "abc.dcm").write_bytes(b"DICM")
+    Image.fromarray(np.full((16, 16), 127, dtype=np.uint8), mode="L").save(
+        mimic_root / "files" / "p10" / "p10000001" / "s50000001" / "abc.jpg"
+    )
     (reports_root / "p10" / "p10000001" / "s50000001.txt").write_text("report", encoding="utf-8")
 
     split_csv = tmp_path / "split.csv"
@@ -110,7 +112,9 @@ def test_subset_hash_enforces_class_coverage(tmp_path: Path):
         report_dir = reports_root / prefix / subject_dir
         study_dir.mkdir(parents=True)
         report_dir.mkdir(parents=True)
-        (study_dir / f"{dicom_id}.dcm").write_bytes(b"DICM")
+        Image.fromarray(np.full((16, 16), 127, dtype=np.uint8), mode="L").save(
+            study_dir / f"{dicom_id}.jpg"
+        )
         (report_dir / f"s{study_id}.txt").write_text("report", encoding="utf-8")
 
         split_lines.append(f"{subject_id},{study_id},{dicom_id},train")
@@ -165,3 +169,67 @@ def test_subset_hash_enforces_class_coverage(tmp_path: Path):
 
     assert len(present_positive_classes(val_ds)) == 14
     assert len(present_positive_classes(test_ds)) == 14
+
+
+def test_dataset_auto_resolves_jpg_images(tmp_path: Path):
+    mimic_root = tmp_path / "mimic-jpg"
+    reports_root = tmp_path / "reports"
+    kg_dir = tmp_path / "kg"
+
+    image_dir = mimic_root / "files" / "p10" / "p10000001" / "s50000001"
+    image_dir.mkdir(parents=True)
+    (reports_root / "p10" / "p10000001").mkdir(parents=True)
+    kg_dir.mkdir(parents=True)
+
+    image_path = image_dir / "abc.jpg"
+    Image.fromarray(np.full((32, 32), 127, dtype=np.uint8), mode="L").save(image_path)
+    (reports_root / "p10" / "p10000001" / "s50000001.txt").write_text(
+        "report",
+        encoding="utf-8",
+    )
+
+    split_csv = tmp_path / "split.csv"
+    split_csv.write_text(
+        "subject_id,study_id,dicom_id,split\n10000001,50000001,abc,train\n",
+        encoding="utf-8",
+    )
+
+    chexpert_cols = [
+        "Atelectasis",
+        "Cardiomegaly",
+        "Consolidation",
+        "Edema",
+        "Enlarged Cardiomediastinum",
+        "Fracture",
+        "Lung Lesion",
+        "Lung Opacity",
+        "No Finding",
+        "Pleural Effusion",
+        "Pleural Other",
+        "Pneumonia",
+        "Pneumothorax",
+        "Support Devices",
+    ]
+    chexpert_csv = tmp_path / "chexpert.csv"
+    chexpert_csv.write_text(
+        "subject_id,study_id," + ",".join(chexpert_cols) + "\n"
+        + "10000001,50000001," + ",".join(["0"] * 14) + "\n",
+        encoding="utf-8",
+    )
+
+    ds = MIMICCXRDataset(
+        split="train",
+        mimic_root=mimic_root,
+        reports_root=reports_root,
+        split_csv=split_csv,
+        chexpert_csv=chexpert_csv,
+        kg_artifacts_dir=kg_dir,
+        include_graphs=False,
+        split_strategy="official",
+    )
+
+    assert len(ds) == 1
+    assert ds.samples[0]["image_path"].suffix == ".jpg"
+
+    item = ds[0]
+    assert item["image"].size == (224, 224)

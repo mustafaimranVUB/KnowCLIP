@@ -148,7 +148,7 @@ class CrossAttentionFusion(BaseFusionModule):
         Z_k: torch.Tensor,
         Z_v: torch.Tensor,
         return_attention: bool = False,
-    ) -> torch.Tensor | Tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor | Tuple[torch.Tensor, dict[str, object]]:
         """Fuse knowledge and visual features.
 
         Args:
@@ -161,17 +161,22 @@ class CrossAttentionFusion(BaseFusionModule):
         """
         h = Z_k
         attn_weights = None
+        attention_per_layer: list[torch.Tensor] = []
 
         for layer in self.layers:
             if return_attention:
                 h, attn_weights = layer(h, Z_v, return_attention=True)
+                attention_per_layer.append(attn_weights)
             else:
                 h = layer(h, Z_v, return_attention=False)
 
         h = self.bottleneck(h)
 
         if return_attention and attn_weights is not None:
-            return h, attn_weights
+            return h, {
+                "per_layer": attention_per_layer,
+                "last_layer": attn_weights,
+            }
         return h
 
     def get_output_dim(self) -> int:
@@ -190,15 +195,29 @@ class SelfAttentionPooling(nn.Module):
         self.attn = nn.Linear(hidden_dim, 1)
         self.norm = nn.LayerNorm(hidden_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Pool patch embeddings.
 
         Args:
             x: ``(B, P, D)`` patch embeddings.
+            mask: Optional ``(B, P)`` bool tensor where ``True`` marks valid
+                positions.
+            return_attention: If ``True``, also return the pooling weights.
 
         Returns:
             ``(B, D)`` pooled representation.
         """
-        weights = F.softmax(self.attn(x), dim=1)  # (B, P, 1)
+        logits = self.attn(x)  # (B, P, 1)
+        if mask is not None:
+            logits = logits.masked_fill(~mask.unsqueeze(-1), float("-inf"))
+        weights = F.softmax(logits, dim=1)
         pooled = (weights * x).sum(dim=1)  # (B, D)
-        return self.norm(pooled)
+        pooled = self.norm(pooled)
+        if return_attention:
+            return pooled, weights.squeeze(-1)
+        return pooled

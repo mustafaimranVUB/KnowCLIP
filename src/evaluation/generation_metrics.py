@@ -1,4 +1,4 @@
-"""Report-generation evaluation metrics: BLEU, ROUGE, BERTScore, F1-RadGraph."""
+"""Report-generation evaluation metrics: BLEU, ROUGE, METEOR, BERTScore, F1-RadGraph."""
 
 from __future__ import annotations
 
@@ -38,11 +38,21 @@ class GenerationEvaluator:
         results.update(self._compute_bleu(predictions, references))
         results.update(self._compute_rouge(predictions, references))
 
+        try:
+            results.update(self._compute_meteor(predictions, references))
+        except Exception as exc:
+            logger.warning("METEOR skipped: %s", exc)
+
         # BERTScore (optional, may be slow)
         try:
             results.update(self._compute_bertscore(predictions, references))
         except ImportError:
             logger.warning("bert_score not installed, skipping BERTScore")
+
+        try:
+            results.update(self._compute_cider(predictions, references))
+        except (ImportError, Exception) as exc:
+            logger.warning("CIDEr skipped: %s", exc)
 
         # F1-RadGraph (optional)
         try:
@@ -61,7 +71,7 @@ class GenerationEvaluator:
         predictions: List[str],
         references: List[str],
     ) -> Dict[str, float]:
-        """Compute corpus BLEU-1, 2, 4."""
+        """Compute corpus BLEU-1, 2, 3, 4."""
         import nltk  # type: ignore
         from nltk.translate.bleu_score import (  # type: ignore
             corpus_bleu,
@@ -76,9 +86,10 @@ class GenerationEvaluator:
 
         bleu1 = corpus_bleu(refs_tok, hyps_tok, weights=(1, 0, 0, 0), smoothing_function=smooth)
         bleu2 = corpus_bleu(refs_tok, hyps_tok, weights=(0.5, 0.5, 0, 0), smoothing_function=smooth)
+        bleu3 = corpus_bleu(refs_tok, hyps_tok, weights=(1 / 3, 1 / 3, 1 / 3, 0), smoothing_function=smooth)
         bleu4 = corpus_bleu(refs_tok, hyps_tok, weights=(0.25, 0.25, 0.25, 0.25), smoothing_function=smooth)
 
-        return {"bleu_1": bleu1, "bleu_2": bleu2, "bleu_4": bleu4}
+        return {"bleu_1": bleu1, "bleu_2": bleu2, "bleu_3": bleu3, "bleu_4": bleu4}
 
     @staticmethod
     def _compute_rouge(
@@ -123,6 +134,49 @@ class GenerationEvaluator:
             "bertscore_recall": float(R.mean()),
             "bertscore_f1": float(F1.mean()),
         }
+
+    @staticmethod
+    def _compute_meteor(
+        predictions: List[str],
+        references: List[str],
+    ) -> Dict[str, float]:
+        import nltk  # type: ignore
+        from nltk.translate.meteor_score import meteor_score  # type: ignore
+
+        for _corpus in ("wordnet", "omw-1.4"):
+            try:
+                nltk.data.find(f"corpora/{_corpus}")
+            except LookupError:
+                nltk.download(_corpus, quiet=True)
+
+        scores = [
+            meteor_score([ref.split()], pred.split())
+            for pred, ref in zip(predictions, references)
+        ]
+        return {"meteor": float(sum(scores) / max(len(scores), 1))}
+
+    @staticmethod
+    def _compute_cider(
+        predictions: List[str],
+        references: List[str],
+    ) -> Dict[str, float]:
+        try:
+            from pycocoevalcap.cider.cider import Cider  # type: ignore
+
+            scorer = Cider()
+            refs = {idx: [ref] for idx, ref in enumerate(references)}
+            hyps = {idx: [pred] for idx, pred in enumerate(predictions)}
+            score, _ = scorer.compute_score(refs, hyps)
+            return {"cider": float(score)}
+        except ImportError:
+            from aac_metrics.functional import cider_d  # type: ignore
+
+            score = cider_d(predictions, [[ref] for ref in references])
+            if isinstance(score, dict):
+                for key in ("cider", "CIDEr", "score"):
+                    if key in score:
+                        return {"cider": float(score[key])}
+            return {"cider": float(score)}
 
     @staticmethod
     def _compute_f1_radgraph(

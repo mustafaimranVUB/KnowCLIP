@@ -86,3 +86,47 @@ def test_collate_bos_eos_with_real_tokenizer(monkeypatch):
     # There must be at least one EOS in gen_targets (model learns to stop)
     real_targets = gen_targets[0][gen_targets[0] != -100]
     assert eos_id in real_targets.tolist()
+
+
+def test_collate_preserves_graph_metadata_lists(monkeypatch):
+    class FakeTokenizer:
+        def __call__(self, texts, padding="max_length", truncation=True, max_length=128, return_tensors="pt"):
+            ids = torch.full((len(texts), max_length), 7, dtype=torch.long)
+            mask = torch.ones((len(texts), max_length), dtype=torch.long)
+            return {"input_ids": ids, "attention_mask": mask}
+
+    monkeypatch.setattr(dataset_mod, "_REPORT_TOKENIZER", FakeTokenizer())
+
+    batch = [
+        {
+            "image": torch.randn(3, 224, 224),
+            "labels": torch.zeros(14),
+            "report_text": "mild cardiomegaly",
+            "subject_id": 1,
+            "study_id": 11,
+            "study_key": "1_11",
+            "graph_x": torch.randn(2, 768),
+            "graph_edge_index": torch.tensor([[0], [1]], dtype=torch.long),
+            "graph_edge_type": torch.tensor([0], dtype=torch.long),
+            "graph_node_texts": ["heart", "cardiomegaly"],
+            "graph_node_cuis": ["C0018787", "C0018800"],
+            "graph_node_types": ["anatomy", "observation"],
+            "graph_node_certainties": ["definitely_present", "definitely_present"],
+        },
+        {
+            "image": torch.randn(3, 224, 224),
+            "labels": torch.ones(14),
+            "report_text": "no focal consolidation",
+            "subject_id": 2,
+            "study_id": 22,
+            "study_key": "2_22",
+        },
+    ]
+
+    out = collate_mimic(batch)
+
+    assert out["graph_num_nodes_per_sample"] == [2, 0]
+    assert out["graph_node_texts"] == [["heart", "cardiomegaly"], []]
+    assert out["graph_node_cuis"] == [["C0018787", "C0018800"], []]
+    assert out["graph_node_types"] == [["anatomy", "observation"], []]
+    assert out["graph_node_certainties"] == [["definitely_present", "definitely_present"], []]

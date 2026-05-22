@@ -1,0 +1,8 @@
+# Minimal runtime dependencies for the standalone KG viewer.
+# Install a compatible PyTorch build for your target platform if your environment does not already provide one.
+numpy>=2.0.0
+pandas>=2.2.0
+torch>=2.5.0
+torch-geometric>=2.6.0
+streamlit>=1.56.0
+pyvis>=0.3.2

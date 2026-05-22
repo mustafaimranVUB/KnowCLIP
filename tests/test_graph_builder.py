@@ -18,6 +18,7 @@ from src.knowledge.graph_builder import (
     KnowledgeGraphBuilder,
     validate_graph,
 )
+from src.knowledge.ontology_grounding import GroundingResult
 
 
 class TestEdgeTypeMap:
@@ -94,6 +95,77 @@ class TestKnowledgeGraphBuilder:
         )
         # Entities are deduplicated across reports
         assert graph.x.shape[0] == 4
+
+    def test_collapsed_edge_weights_preserve_duplicate_counts(self, sample_entities, sample_triples):
+        builder = KnowledgeGraphBuilder(node_dim=768, add_self_loops=False)
+        graph = builder.build_global_graph(
+            all_entities=[sample_entities, sample_entities],
+            all_triples=[sample_triples, sample_triples],
+        )
+
+        assert graph.edge_index.shape[1] == 4
+        assert graph.collapsed_edge_index.shape[1] == 2
+        assert sorted(graph.collapsed_edge_weight.tolist()) == [2.0, 2.0]
+
+    def test_node_certainty_metadata_is_attached(self, sample_entities, sample_triples):
+        builder = KnowledgeGraphBuilder(node_dim=768, add_self_loops=True)
+        graph = builder.build_from_extraction(
+            entities=sample_entities,
+            triples=sample_triples,
+        )
+
+        opacity_idx = graph.node_texts.index("opacity")
+        assert graph.node_certainties[opacity_idx] == Certainty.UNCERTAIN.value
+        assert graph.node_certainty_counts[opacity_idx][Certainty.UNCERTAIN.value] == 1
+
+    def test_build_from_extraction_adds_ontology_edges(self):
+        class DummyMRRELIndex:
+            def get_neighbours(self, cui: str):
+                if cui == "C_CARDIOMEGALY":
+                    return [("RB", "C_HEART")]
+                return []
+
+        entities = [
+            ExtractedEntity(
+                text="heart",
+                entity_type=EntityType.ANATOMY,
+                certainty=Certainty.DEFINITELY_PRESENT,
+            ),
+            ExtractedEntity(
+                text="cardiomegaly",
+                entity_type=EntityType.OBSERVATION,
+                certainty=Certainty.DEFINITELY_PRESENT,
+            ),
+        ]
+        groundings = [
+            GroundingResult(
+                mention="heart",
+                normalized="heart",
+                canonical="heart",
+                best_cui="C_HEART",
+                best_name="heart",
+                mapped=True,
+            ),
+            GroundingResult(
+                mention="cardiomegaly",
+                normalized="cardiomegaly",
+                canonical="cardiomegaly",
+                best_cui="C_CARDIOMEGALY",
+                best_name="cardiomegaly",
+                mapped=True,
+            ),
+        ]
+
+        builder = KnowledgeGraphBuilder(node_dim=768, add_self_loops=False)
+        graph = builder.build_from_extraction(
+            entities=entities,
+            triples=[],
+            grounding_results=groundings,
+            mrrel_index=DummyMRRELIndex(),
+        )
+
+        assert graph.edge_index.shape[1] == 1
+        assert graph.edge_type.tolist() == [EDGE_TYPE_MAP["associated_with"]]
 
     def test_empty_entities(self):
         builder = KnowledgeGraphBuilder(node_dim=768, add_self_loops=True)

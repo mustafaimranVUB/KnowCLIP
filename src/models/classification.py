@@ -27,9 +27,18 @@ class ClassificationHead(nn.Module):
         super().__init__()
         self.config = config
 
+        # Use GroupNorm(1, C) instead of BatchNorm1d when batch_size=1 is
+        # possible (local single-DICOM testing).  GroupNorm(1, C) is
+        # equivalent to LayerNorm over the feature dim and is numerically
+        # stable for B=1.
+        if config.use_batch_norm:
+            norm_layer: nn.Module = nn.GroupNorm(1, config.hidden_dim)
+        else:
+            norm_layer = nn.Identity()
+
         self.head = nn.Sequential(
             nn.Linear(input_dim, config.hidden_dim),
-            nn.BatchNorm1d(config.hidden_dim) if config.use_batch_norm else nn.Identity(),
+            norm_layer,
             nn.ReLU(),
             nn.Dropout(config.dropout),
             nn.Linear(config.hidden_dim, config.num_classes),

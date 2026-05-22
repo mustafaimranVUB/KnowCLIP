@@ -32,6 +32,7 @@ class MultiTaskLoss(nn.Module):
         self.classification_loss_type = classification_loss_type
         self.focal_gamma = focal_gamma
         self.focal_alpha = focal_alpha
+        self.label_smoothing = label_smoothing
 
         # BCE with logits for multi-label classification
         self.bce_loss = nn.BCEWithLogitsLoss(reduction="none")
@@ -113,7 +114,7 @@ class MultiTaskLoss(nn.Module):
                 cls_loss = torch.tensor(0.0, device=device)
             losses["classification"] = cls_loss
         else:
-            losses["classification"] = torch.tensor(0.0)
+            losses["classification"] = torch.tensor(0.0, device=device) if device else torch.tensor(0.0)
 
         # Generation loss (cross-entropy on shifted targets)
         if generation_logits is not None and generation_targets is not None:
@@ -125,7 +126,7 @@ class MultiTaskLoss(nn.Module):
             )
             losses["generation"] = gen_loss
         else:
-            losses["generation"] = torch.tensor(0.0)
+            losses["generation"] = torch.tensor(0.0, device=device) if device else torch.tensor(0.0)
 
         # Weighted total
         if device is None:

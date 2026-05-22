@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import math
+from functools import lru_cache
 from typing import List, Optional
 
 import torch
@@ -22,6 +23,27 @@ from src.core.config import ReportGenerationConfig
 from src.models.interfaces import BaseDecoder
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=8)
+def _prompt_prefix_token_ids(prefix: str) -> tuple[int, ...]:
+    """Tokenize a fixed generation prefix with GPT-2 tokenizer.
+
+    Returns an empty tuple if tokenization is unavailable.
+    """
+    norm = (prefix or "").strip()
+    if not norm:
+        return ()
+
+    try:
+        from transformers import AutoTokenizer  # type: ignore
+
+        tok = AutoTokenizer.from_pretrained("gpt2")
+        token_ids = tok.encode(norm, add_special_tokens=False)
+        return tuple(int(t) for t in token_ids)
+    except Exception as exc:
+        logger.warning("Prompt prefix tokenization unavailable, disabling prefix: %s", exc)
+        return ()
 
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -112,6 +134,21 @@ def _apply_decoding_constraints(
     return next_logits
 
 
+def _init_generation_input_ids(
+    batch_size: int,
+    device: torch.device,
+    config: ReportGenerationConfig,
+) -> tuple[torch.Tensor, list[list[int]], int]:
+    """Build initial decoder input IDs with BOS and optional prompt prefix."""
+    eos_token_id = config.vocab_size - 1
+    prefix_ids = list(_prompt_prefix_token_ids(getattr(config, "prompt_prefix", "")))
+
+    start_tokens = [eos_token_id] + prefix_ids
+    input_ids = torch.tensor(start_tokens, dtype=torch.long, device=device).unsqueeze(0).repeat(batch_size, 1)
+    generated = [list(prefix_ids) for _ in range(batch_size)]
+    return input_ids, generated, eos_token_id
+
+
 # =====================================================================
 # 1) TransformerReportDecoder — vanilla (backward-compatible)
 # =====================================================================
@@ -167,7 +204,8 @@ class TransformerReportDecoder(BaseDecoder):
         target_ids: torch.Tensor,
         teacher_forcing_ratio: float = 1.0,
         encoder_padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, None]:
         B, L = target_ids.shape
 
         decode_ids = target_ids
@@ -194,6 +232,8 @@ class TransformerReportDecoder(BaseDecoder):
             memory_key_padding_mask=encoder_padding_mask,
         )
         logits = self.output_proj(decoded)
+        if return_attention:
+            return logits, None
         return logits
 
     def _scheduled_sampling_mix_ids(
@@ -235,16 +275,15 @@ class TransformerReportDecoder(BaseDecoder):
     ) -> List[List[int]]:
         B = encoder_output.shape[0]
         device = encoder_output.device
-        eos_token_id = self.config.vocab_size - 1
-        input_ids = torch.full((B, 1), eos_token_id, dtype=torch.long, device=device)
-        generated: List[List[int]] = [[] for _ in range(B)]
+        input_ids, generated, eos_token_id = _init_generation_input_ids(B, device, self.config)
         finished = [False] * B
 
+        decode_steps = max(0, max_length - max(len(seq) for seq in generated))
         full_causal_mask = nn.Transformer.generate_square_subsequent_mask(
-            max_length + 1, device=device
+            decode_steps + input_ids.shape[1], device=device
         )
 
-        for step in range(max_length):
+        for _ in range(decode_steps):
             seq_len = input_ids.shape[1]
             causal_mask = full_causal_mask[:seq_len, :seq_len]
 
@@ -327,14 +366,20 @@ class _CrossAttentionBlock(nn.Module):
         hidden: torch.Tensor,
         encoder_output: torch.Tensor,
         encoder_padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         residual = hidden
         h = self.ln(hidden)
-        h, _ = self.cross_attn(
+        h, attn_weights = self.cross_attn(
             query=h, key=encoder_output, value=encoder_output,
             key_padding_mask=encoder_padding_mask,
+            need_weights=return_attention,
+            average_attn_weights=False,
         )
-        return residual + self.dropout(h)
+        h = residual + self.dropout(h)
+        if return_attention:
+            return h, attn_weights
+        return h
 
 
 class GPT2ReportDecoder(BaseDecoder):
@@ -405,7 +450,8 @@ class GPT2ReportDecoder(BaseDecoder):
         target_ids: torch.Tensor,
         teacher_forcing_ratio: float = 1.0,
         encoder_padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[str, object]]:
         """Compute next-token logits with teacher forcing.
 
         Args:
@@ -433,14 +479,20 @@ class GPT2ReportDecoder(BaseDecoder):
             keep_mask[:, 0] = True
             decode_ids = torch.where(keep_mask, target_ids, pred_ids)
 
-        return self._gpt2_forward(decode_ids, encoder_output, encoder_padding_mask)
+        return self._gpt2_forward(
+            decode_ids,
+            encoder_output,
+            encoder_padding_mask,
+            return_attention=return_attention,
+        )
 
     def _gpt2_forward(
         self,
         input_ids: torch.Tensor,
         encoder_output: torch.Tensor,
         encoder_padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[str, object]]:
         """Run GPT-2 blocks interleaved with cross-attention."""
         # GPT-2 embeddings (token + position)
         inputs_embeds = self.gpt2.wte(input_ids)
@@ -451,12 +503,25 @@ class GPT2ReportDecoder(BaseDecoder):
         hidden = self.gpt2.drop(hidden)
 
         # Run through each GPT-2 block + cross-attention
+        attention_per_layer: list[torch.Tensor] = []
         for gpt2_block, xattn_block in zip(self.gpt2.h, self.cross_attention_blocks):
             hidden = gpt2_block(hidden)[0]  # GPT-2 self-attention + FFN
-            hidden = xattn_block(hidden, encoder_output, encoder_padding_mask)  # cross-attention to encoder
+            if return_attention:
+                hidden, attn_weights = xattn_block(
+                    hidden,
+                    encoder_output,
+                    encoder_padding_mask,
+                    return_attention=True,
+                )
+                attention_per_layer.append(attn_weights)
+            else:
+                hidden = xattn_block(hidden, encoder_output, encoder_padding_mask)  # cross-attention to encoder
 
         hidden = self.gpt2.ln_f(hidden)
-        return self.output_proj(hidden)
+        logits = self.output_proj(hidden)
+        if return_attention:
+            return logits, {"per_layer": attention_per_layer}
+        return logits
 
     # ---- beam search generation ---------------------------------------
 
@@ -470,26 +535,25 @@ class GPT2ReportDecoder(BaseDecoder):
 
         Falls back to greedy if ``beam_size <= 1``.
         """
-        self._gen_encoder_padding_mask = encoder_padding_mask
         beam_size = max(1, int(getattr(self.config, "beam_size", 1)))
         if beam_size <= 1:
-            return self._greedy_generate(encoder_output, max_length)
-        return self._beam_search_generate(encoder_output, max_length, beam_size)
+            return self._greedy_generate(encoder_output, max_length, encoder_padding_mask)
+        return self._beam_search_generate(encoder_output, max_length, beam_size, encoder_padding_mask)
 
     def _greedy_generate(
         self,
         encoder_output: torch.Tensor,
         max_length: int,
+        encoder_padding_mask: Optional[torch.Tensor] = None,
     ) -> List[List[int]]:
         B = encoder_output.shape[0]
         device = encoder_output.device
-        eos_token_id = self.config.vocab_size - 1
-        input_ids = torch.full((B, 1), eos_token_id, dtype=torch.long, device=device)
-        generated: List[List[int]] = [[] for _ in range(B)]
+        input_ids, generated, eos_token_id = _init_generation_input_ids(B, device, self.config)
         finished = [False] * B
 
-        mask = getattr(self, '_gen_encoder_padding_mask', None)
-        for _ in range(max_length):
+        mask = encoder_padding_mask
+        decode_steps = max(0, max_length - max(len(seq) for seq in generated))
+        for _ in range(decode_steps):
             logits = self._gpt2_forward(input_ids, encoder_output, mask)
             next_logits = logits[:, -1, :]
             next_logits = _apply_decoding_constraints(next_logits, input_ids, self.config)
@@ -514,6 +578,7 @@ class GPT2ReportDecoder(BaseDecoder):
         encoder_output: torch.Tensor,
         max_length: int,
         beam_size: int,
+        encoder_padding_mask: Optional[torch.Tensor] = None,
     ) -> List[List[int]]:
         """Beam search — processes each sample independently."""
         B = encoder_output.shape[0]
@@ -523,17 +588,20 @@ class GPT2ReportDecoder(BaseDecoder):
 
         all_generated: List[List[int]] = []
 
-        mask = getattr(self, '_gen_encoder_padding_mask', None)
+        mask = encoder_padding_mask
         for b in range(B):
             enc = encoder_output[b:b+1]  # (1, M, D)
             enc_beam = enc.expand(beam_size, -1, -1)  # (beam, M, D)
             b_mask = mask[b:b+1] if mask is not None else None
+            prefix_ids = list(_prompt_prefix_token_ids(getattr(self.config, "prompt_prefix", "")))
 
             # Each beam: (log_prob, token_ids_tensor)
-            beams = [(0.0, torch.full((1, 1), eos_token_id, dtype=torch.long, device=device))]
+            start = torch.tensor([eos_token_id] + prefix_ids, dtype=torch.long, device=device).view(1, -1)
+            beams = [(0.0, start)]
             completed: list[tuple[float, list[int]]] = []
+            decode_steps = max(0, max_length - len(prefix_ids))
 
-            for _ in range(max_length):
+            for _ in range(decode_steps):
                 candidates: list[tuple[float, torch.Tensor]] = []
 
                 for score, seq in beams:

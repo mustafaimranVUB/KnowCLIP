@@ -7,13 +7,23 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.err
-#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tsalaar.2003@gmail.com
 # ============================================================
 # Hydra Environment Setup (SLURM Batch Job)
 # Run ONCE to set up the persistent environment.
 # Usage: sbatch scripts/hydra/setup_env_sbatch.sh
 # ============================================================
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SLURM copies the batch script to its spool dir; BASH_SOURCE[0] then points
+# there instead of the repo.  Fall back to SLURM_SUBMIT_DIR when needed.
+if [[ ! -f "${SCRIPT_DIR}/common_paths.sh" && -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    SCRIPT_DIR="${SLURM_SUBMIT_DIR}/scripts/hydra"
+fi
+# shellcheck source=./common_paths.sh
+source "${SCRIPT_DIR}/common_paths.sh"
 
 echo "=== KnoCLIP-XAI Environment Setup ==="
 echo "Job ID : $SLURM_JOB_ID"
@@ -24,8 +34,8 @@ echo "VSC_HOME:    $VSC_HOME"
 echo "VSC_DATA:    $VSC_DATA"
 echo "VSC_SCRATCH: $VSC_SCRATCH"
 
-PROJECT_DIR="${VSC_DATA}/thesis"
-ENV_PATH="${PROJECT_DIR}/envs/knowclip"
+PROJECT_DIR="${THESIS_REPO_DIR}"
+ENV_PATH="${THESIS_ENV_PATH}"
 
 # Step 1: Load required modules
 echo ""
@@ -60,13 +70,13 @@ fi
 
 echo "Using Python: $(${PYTHON_BIN} -c 'import sys; print(sys.executable)')"
 
-# Route all large caches away from $VSC_HOME
-export HF_HOME="${VSC_SCRATCH}/hf_cache"
-export HUGGINGFACE_HUB_CACHE="${HF_HOME}"
-export TORCH_HOME="${VSC_SCRATCH}/torch_cache"
-export XDG_CACHE_HOME="${VSC_SCRATCH}/.cache"
-export PIP_CACHE_DIR="${VSC_SCRATCH}/pip_cache"
-export MPLCONFIGDIR="${VSC_SCRATCH}/matplotlib"
+# Route all large caches to the new scratch root.
+export HF_HOME="${HF_HOME:-${THESIS_SCRATCH_ROOT}/hf_cache}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-${HF_HOME}}"
+export TORCH_HOME="${TORCH_HOME:-${THESIS_SCRATCH_ROOT}/torch_cache}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${THESIS_SCRATCH_ROOT}/.cache}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${THESIS_SCRATCH_ROOT}/pip_cache}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${THESIS_SCRATCH_ROOT}/matplotlib}"
 mkdir -p "$HF_HOME" "$TORCH_HOME" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$MPLCONFIGDIR"
 
 # Step 3: Activate and install
@@ -81,7 +91,7 @@ echo "[3/5] Installing dependencies …"
 
 # Install torch-geometric and requirements
 "${PYTHON_BIN}" -m pip install torch-geometric==2.6.0
-"${PYTHON_BIN}" -m pip install -r "$VSC_DATA/thesis/requirements.txt"
+"${PYTHON_BIN}" -m pip install -r "${PROJECT_DIR}/requirements.txt"
 
 # OpenCLIP support for non-standard CLIP checkpoints (e.g., BioMedCLIP variants)
 "${PYTHON_BIN}" -m pip install open-clip-torch
@@ -93,8 +103,8 @@ echo "[4/5] Installing DICOM processing extras …"
 
 # Step 4b: scispaCy model (installed to $VSC_SCRATCH to avoid quota issues)
 echo ""
-echo "[4b/5] Installing en_core_sci_lg (scispaCy) to \$VSC_SCRATCH/scispacy_cache …"
-SCISPACY_CACHE="${VSC_SCRATCH}/scispacy_cache"
+echo "[4b/5] Installing en_core_sci_lg (scispaCy) to ${THESIS_SCISPACY_CACHE_WRITE} …"
+SCISPACY_CACHE="${THESIS_SCISPACY_CACHE_WRITE}"
 mkdir -p "${SCISPACY_CACHE}"
 
 # Install scispacy package itself
@@ -107,22 +117,19 @@ mkdir -p "${SCISPACY_CACHE}"
 
 # Export SCISPACY_CACHE so the pipeline can find it
 export SCISPACY_CACHE="${SCISPACY_CACHE}"
-if ! grep -q "SCISPACY_CACHE" ~/.bashrc 2>/dev/null; then
-    echo "export SCISPACY_CACHE=\${VSC_SCRATCH}/scispacy_cache" >> ~/.bashrc
-    echo "Added SCISPACY_CACHE to ~/.bashrc"
-fi
-
-# Persist cache redirection in login shells as well
-if ! grep -q "export HF_HOME=\${VSC_SCRATCH}/hf_cache" ~/.bashrc 2>/dev/null; then
+if ! grep -q "THESIS_SCRATCH_ROOT=/scratch/brussel/vo/000/bvo00010/vsc11249" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc <<'EOF'
-export HF_HOME=${VSC_SCRATCH}/hf_cache
+export THESIS_DATA_ROOT=/data/brussel/vo/000/bvo00010/vsc11249
+export THESIS_SCRATCH_ROOT=/scratch/brussel/vo/000/bvo00010/vsc11249
+export SCISPACY_CACHE=${THESIS_SCRATCH_ROOT}/scispacy_cache
+export HF_HOME=${THESIS_SCRATCH_ROOT}/hf_cache
 export HUGGINGFACE_HUB_CACHE=${HF_HOME}
-export TORCH_HOME=${VSC_SCRATCH}/torch_cache
-export XDG_CACHE_HOME=${VSC_SCRATCH}/.cache
-export PIP_CACHE_DIR=${VSC_SCRATCH}/pip_cache
-export MPLCONFIGDIR=${VSC_SCRATCH}/matplotlib
+export TORCH_HOME=${THESIS_SCRATCH_ROOT}/torch_cache
+export XDG_CACHE_HOME=${THESIS_SCRATCH_ROOT}/.cache
+export PIP_CACHE_DIR=${THESIS_SCRATCH_ROOT}/pip_cache
+export MPLCONFIGDIR=${THESIS_SCRATCH_ROOT}/matplotlib
 EOF
-    echo "Added cache redirection exports to ~/.bashrc"
+    echo "Added Hydra storage exports to ~/.bashrc"
 fi
 
 # Step 5: Verify installation
@@ -141,10 +148,9 @@ import transformers; print(f'Transformers: {transformers.__version__}')
 # Create output directories
 echo ""
 echo "Creating output directories …"
-
-mkdir -p "$VSC_DATA/thesis/outputs/KG"
-mkdir -p "$VSC_DATA/thesis/outputs/checkpoints"
-mkdir -p "$VSC_DATA/thesis/outputs/logs"
+mkdir -p "${THESIS_WRITE_OUTPUT_ROOT}/KG"
+mkdir -p "${THESIS_WRITE_OUTPUT_ROOT}/checkpoints"
+mkdir -p "${THESIS_WRITE_OUTPUT_ROOT}/logs"
 
 echo ""
 echo "=== Setup complete ==="

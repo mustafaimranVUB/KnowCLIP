@@ -59,7 +59,8 @@ class BaseKnowledgeEncoder(ABC, nn.Module):
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
         batch: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | Tuple[torch.Tensor, Any]:
         """Encode graph nodes.
 
         Args:
@@ -67,9 +68,11 @@ class BaseKnowledgeEncoder(ABC, nn.Module):
             edge_index: ``(2, E)`` COO edge indices.
             edge_type: ``(E,)`` integer edge types.
             batch: ``(N,)`` batch assignment (for batched graphs).
+            return_attention: If ``True``, also return graph-attention traces.
 
         Returns:
-            ``(N, D_out)`` encoded node embeddings.
+            ``(N, D_out)`` encoded node embeddings, optionally paired with
+            attention metadata.
         """
         ...
 
@@ -124,7 +127,8 @@ class BaseDecoder(ABC, nn.Module):
         target_ids: torch.Tensor,
         teacher_forcing_ratio: float = 1.0,
         encoder_padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | Tuple[torch.Tensor, Any]:
         """Compute next-token logits given encoder context and target IDs.
 
         Args:
@@ -133,9 +137,11 @@ class BaseDecoder(ABC, nn.Module):
             teacher_forcing_ratio: Probability of using ground-truth tokens.
             encoder_padding_mask: ``(B, K)`` bool mask — ``True`` for
                 positions to **ignore** (zero-padded KG nodes).
+            return_attention: If ``True``, also return decoder attention traces.
 
         Returns:
-            ``(B, L, vocab_size)`` logits.
+            ``(B, L, vocab_size)`` logits, optionally paired with attention
+            metadata.
         """
         ...
 

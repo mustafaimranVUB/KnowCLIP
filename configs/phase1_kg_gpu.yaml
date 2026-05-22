@@ -4,23 +4,24 @@
 # Differences from phase1_kg_local.yaml:
 #   - No max_studies cap (full dataset)
 #   - radgraph_model_type: modern-radgraph-xl  (latest, ModernBERT backbone)
-#   - output_dir under $VSC_DATA for persistence across sessions
+#   - Inputs are resolved by scripts/hydra/common_paths.sh so existing legacy
+#     assets remain readable while new KG outputs/logs are written to the new
+#     thesis storage roots.
 
 data:
-  reports_root: "data/MIMIC-CXR-RRG_reports/files"
-  mimic_root:   "data/MIMIC-CXR-RRG_reports"
-  kg_artifacts_dir: "outputs/KG"
+  reports_root: "${PHASE1_REPORTS_ROOT}"
+  mimic_root: "${PHASE1_SOURCE_ROOT}"
+  kg_artifacts_dir: "${KG_OUTPUT_DIR}"
 
 kg_pipeline:
-  # UMLS Metathesaurus — on scratch (large files)
-  mrconso_path: "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRCONSO.RRF"
-  mrsty_path:   "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRSTY.RRF"
-  mrrel_path:   "/scratch/brussel/112/vsc11249/ontology/umls-2025AB-metathesaurus-full/2025AB/META/MRREL.RRF"
+  mrconso_path: "${UMLS_MRCONSO_PATH}"
+  mrsty_path: "${UMLS_MRSTY_PATH}"
+  mrrel_path: "${UMLS_MRREL_PATH}"
 
   # Latest RadGraph model (ModernBERT backbone, ACL 2024)
   radgraph_model_type: "modern-radgraph-xl"
 
-  output_dir: "outputs/KG"
+  output_dir: "${KG_OUTPUT_DIR}"
   top_k_candidates: 5
 
   # Stage-2 scispaCy fallback grounding
@@ -28,9 +29,9 @@ kg_pipeline:
   #   pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.5/en_core_sci_lg-0.5.5.tar.gz \
   #       --target $VSC_SCRATCH/scispacy_cache
   use_scispacy_fallback: true
-  scispacy_cache_dir: "/scratch/brussel/112/vsc11249/scispacy_cache"
+  scispacy_cache_dir: "${SCISPACY_CACHE}"
   scispacy_confidence_threshold: 0.85
 
 training:
   seed: 42
-  log_dir: "outputs/logs"
+  log_dir: "${LOG_DIR}"

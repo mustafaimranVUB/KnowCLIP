@@ -139,7 +139,7 @@ class HybridKGPipeline:
         if self._report_loader is None:
             self._report_loader = ReportLoader(
                 reports_root=self.data_cfg.reports_root,
-                prefer_impression=True,
+                section_preference=self.data_cfg.report_section_preference,
             )
         return self._report_loader
 
@@ -281,6 +281,7 @@ class HybridKGPipeline:
             all_triples=all_triples,
             all_groundings=all_groundings,
             embeddings=embeddings,
+            mrrel_index=self.grounder.mrrel_index,
         )
 
         graph_path = out_dir / "global_kg.pt"
@@ -302,6 +303,7 @@ class HybridKGPipeline:
                 triples=all_triples[i],
                 grounding_results=all_groundings[i] if i < len(all_groundings) else None,
                 embeddings=embeddings,
+                mrrel_index=self.grounder.mrrel_index,
             )
             report_graphs[study_key] = rg
 

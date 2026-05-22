@@ -13,6 +13,9 @@ torch-geometric==2.6.0
 transformers==4.57.3
 huggingface-hub>=0.34.0,<1.0
 
+# OpenCLIP (required for native BioMedCLIP loading)
+open-clip-torch>=2.24.0
+
 # ============================================================
 # Medical NLP
 # ============================================================
@@ -43,6 +46,7 @@ networkx>=3.0
 nltk>=3.8.0
 rouge-score>=0.1.2
 bert-score>=0.3.13
+pycocoevalcap>=1.2
 
 # ============================================================
 # Statistics

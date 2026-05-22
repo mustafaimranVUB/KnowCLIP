@@ -4,7 +4,6 @@
 # Usage:
 #   export HF_HOME=$VSC_SCRATCH/hf_cache TRANSFORMERS_CACHE=$VSC_SCRATCH/hf_cache
 #   python main.py --config configs/phase1_kg_local.yaml phase1
-#   python main.py --config configs/phase1_kg_local.yaml phase1 --max-studies 500
 
 data:
   # MIMIC-CXR-RRG report text files (local copy)

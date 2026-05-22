@@ -1,12 +1,10 @@
-cat <<EOF > ~/data/Work_exp/Thesis/Clone\ repo/.rsync_exclude
-# Data and Research
-MIMIC-CXR-RRG_reports/
+# Large data directories (keep src/data and data/MIMIC-CXR-RRG_reports for grounding)
+data/p10/
+data/MIMIC-CXR-RRG_reports/files/
 umls-2025AB-metathesaurus-full/
 notebooks/
 research/
-datasets/
 documents/
-p10/
 
 # Environments and Cache
 .venv/
@@ -14,6 +12,19 @@ envs/
 __pycache__/
 .conda/
 .pytest_cache/
+hf_cache/
+torch_cache/
+pip_cache/
+.cache/
+matplotlib/
+requirements.txt
+requirements-dev.txt
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
 
 # Git and Configs
 .git/
@@ -22,7 +33,18 @@ __pycache__/
 .cursor/
 .copilot/
 
+# Hydra/MLflow outputs (sync separately for speed)
+outputs/checkpoints/
+outputs/KG/
+outputs/KG_outputs/
+outputs/Final/
+mlruns/
+
 # OS/Editor specific
 .DS_Store
 .vscode/
-EOF
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python

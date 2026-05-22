@@ -12,6 +12,8 @@ venv/
 
 # IDEs
 .vscode/
+.github/agents/
+
 
 
 # Jupyter Notebook
@@ -24,6 +26,9 @@ umls-2025AB-metathesaurus-full/
 p10/
 outputs/
 outputs/KG/
+scripts/
+logs/
+configs/
 
 # UMLS data
 umls_metathesaurus/

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,11 +33,21 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_torch_save(obj: Dict[str, Any], path: Path) -> bool:
-    """Atomically save a checkpoint, returning False instead of raising on I/O errors."""
+    """Atomically save a checkpoint, returning False instead of raising on I/O errors.
+
+    After writing, the checkpoint is verified by partially loading it to
+    confirm the zip archive is intact (guards against HPC filesystem
+    corruption).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    # Use a per-process unique temp path to avoid collisions when multiple
+    # workers/processes attempt to save the same checkpoint path.
+    tmp_name = f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
+    tmp_path = path.with_name(tmp_name)
     try:
         torch.save(obj, str(tmp_path))
+        # Verify the file is a valid zip archive before promoting it.
+        torch.load(str(tmp_path), map_location="cpu", weights_only=False)
         os.replace(tmp_path, path)
         return True
     except Exception as exc:
@@ -59,23 +70,45 @@ def _safe_torch_save(obj: Dict[str, Any], path: Path) -> bool:
         return False
 
 
-def _autocast_ctx(enabled: bool):
-    """Compatibility wrapper for AMP autocast across torch versions."""
+def _autocast_ctx(enabled: bool, device: torch.device | None = None):
+    """Compatibility wrapper for AMP autocast across torch versions.
+
+    Dynamically selects device_type so the same code works on both
+    CUDA (Hydra) and CPU-only (local dev).  AMP autocast on CPU uses
+    bfloat16 when available and is a no-op otherwise.
+    """
+    device_type = "cuda" if (device is not None and device.type == "cuda") else (
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    # AMP on CPU is only meaningful with bfloat16; disable if not available.
+    if device_type == "cpu" and not torch.cpu.is_available():
+        enabled = False
     try:
-        return torch.amp.autocast(device_type="cuda", enabled=enabled)
+        return torch.amp.autocast(device_type=device_type, enabled=enabled)
     except AttributeError:
-        from torch.cuda.amp import autocast  # type: ignore
+        if device_type == "cuda":
+            from torch.cuda.amp import autocast  # type: ignore
+            return autocast(enabled=enabled)
+        # CPU fallback: no-op context manager
+        import contextlib
+        return contextlib.nullcontext()
 
-        return autocast(enabled=enabled)
 
+def _build_grad_scaler(enabled: bool, device: torch.device | None = None):
+    """Compatibility wrapper for GradScaler across torch versions.
 
-def _build_grad_scaler(enabled: bool):
-    """Compatibility wrapper for GradScaler across torch versions."""
+    GradScaler is only useful on CUDA; on CPU we disable it
+    regardless of the ``enabled`` flag.
+    """
+    device_type = "cuda" if (device is not None and device.type == "cuda") else (
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    if device_type != "cuda":
+        enabled = False
     try:
-        return torch.amp.GradScaler("cuda", enabled=enabled)
+        return torch.amp.GradScaler(device_type, enabled=enabled)
     except AttributeError:
         from torch.cuda.amp import GradScaler  # type: ignore
-
         return GradScaler(enabled=enabled)
 
 
@@ -114,6 +147,7 @@ class Trainer:
         self.criterion = MultiTaskLoss(
             classification_weight=self.tc.classification_loss_weight,
             generation_weight=self.tc.generation_loss_weight,
+            label_smoothing=self.config.model.report_generation.label_smoothing,
             classification_loss_type=self.tc.classification_loss_type,
             class_pos_weight=class_pos_weight,
             focal_gamma=self.tc.focal_gamma,
@@ -136,12 +170,13 @@ class Trainer:
         )
 
         # Mixed precision
-        self.scaler = _build_grad_scaler(enabled=self.tc.mixed_precision)
+        self.scaler = _build_grad_scaler(enabled=self.tc.mixed_precision, device=self.device)
 
         # Stage scheduling state.
         self._stage_mode: Optional[str] = None
         self._base_classification_loss_weight = self.criterion.classification_weight
         self._warned_missing_generation_targets = False
+        self._report_prompt_prefix_ids = self._build_report_prompt_prefix_ids()
 
         # State
         self.global_step = 0
@@ -150,6 +185,56 @@ class Trainer:
         self.start_epoch = 0
         self.last_best_checkpoint_path: Optional[Path] = None
         self._run_manifest_written = False
+
+    def _build_report_prompt_prefix_ids(self) -> list[int]:
+        """Resolve configured generation prompt prefix into token IDs."""
+        prefix = str(getattr(self.config.model.report_generation, "prompt_prefix", "") or "").strip()
+        if not prefix:
+            return []
+
+        try:
+            from transformers import AutoTokenizer  # type: ignore
+
+            tok = AutoTokenizer.from_pretrained("gpt2")
+            token_ids = [int(t) for t in tok.encode(prefix, add_special_tokens=False)]
+            if token_ids:
+                logger.info("Using report prompt prefix '%s' (%d tokens)", prefix, len(token_ids))
+            return token_ids
+        except Exception as exc:
+            logger.warning("Could not tokenize report prompt prefix '%s': %s", prefix, exc)
+            return []
+
+    def _apply_report_prompt_prefix(
+        self,
+        target_ids: Optional[torch.Tensor],
+        generation_targets: Optional[torch.Tensor],
+    ) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """Prepend fixed prompt tokens after BOS for report generation targets."""
+        if target_ids is None or not self._report_prompt_prefix_ids:
+            return target_ids, generation_targets
+
+        seq_len = int(target_ids.shape[1])
+        if seq_len <= 1:
+            return target_ids, generation_targets
+
+        prefix_len = min(len(self._report_prompt_prefix_ids), seq_len - 1)
+        prefix_tensor = torch.tensor(
+            self._report_prompt_prefix_ids[:prefix_len],
+            dtype=target_ids.dtype,
+            device=target_ids.device,
+        )
+
+        prefixed_target = target_ids.clone()
+        prefixed_target[:, 1 + prefix_len :] = target_ids[:, 1 : seq_len - prefix_len]
+        prefixed_target[:, 1 : 1 + prefix_len] = prefix_tensor.unsqueeze(0)
+
+        if generation_targets is None:
+            return prefixed_target, generation_targets
+
+        prefixed_generation = generation_targets.clone()
+        prefixed_generation[:, prefix_len:] = generation_targets[:, : seq_len - prefix_len]
+        prefixed_generation[:, :prefix_len] = prefix_tensor.unsqueeze(0)
+        return prefixed_target, prefixed_generation
 
     def _compute_class_pos_weight(self) -> Optional[torch.Tensor]:
         """Estimate per-class positive weights from training labels.
@@ -212,6 +297,7 @@ class Trainer:
             "val_weighted_gen_loss": [],
         }
 
+        epoch = self.start_epoch - 1  # guard: keeps epoch defined even if the loop body never runs
         for epoch in range(self.start_epoch, self.tc.num_epochs):
             self._apply_two_stage_schedule(epoch)
             epoch_stats = self._train_epoch(epoch)
@@ -353,6 +439,7 @@ class Trainer:
         labels = batch["labels"].to(self.device)
         target_ids = self._tensor_to_device(batch.get("target_ids"))
         generation_targets = self._tensor_to_device(batch.get("generation_targets"))
+        target_ids, generation_targets = self._apply_report_prompt_prefix(target_ids, generation_targets)
 
         # Guardrail: if stage-1 disabled classification but no generation targets exist,
         # training would collapse to total_loss=0. Restore classification loss in that case.
@@ -379,7 +466,7 @@ class Trainer:
         cls_w = float(self.criterion.classification_weight)
         gen_w = float(self.criterion.generation_weight)
 
-        with _autocast_ctx(enabled=self.tc.mixed_precision):
+        with _autocast_ctx(enabled=self.tc.mixed_precision, device=self.device):
             outputs = self.model(**forward_kwargs)
 
             losses = self.criterion(
@@ -432,13 +519,14 @@ class Trainer:
         total_gen = 0.0
         total_w_cls = 0.0
         total_w_gen = 0.0
-        num_batches = 0
+        total_samples = 0
 
         for batch in self.val_loader:
             images = batch["image"].to(self.device)
             labels = batch["labels"].to(self.device)
             target_ids = self._tensor_to_device(batch.get("target_ids"))
             generation_targets = self._tensor_to_device(batch.get("generation_targets"))
+            target_ids, generation_targets = self._apply_report_prompt_prefix(target_ids, generation_targets)
 
             forward_kwargs: Dict[str, Any] = {
                 "pixel_values": images,
@@ -456,17 +544,18 @@ class Trainer:
                 generation_logits=outputs.get("generation_logits"),
                 generation_targets=generation_targets,
             )
-            total_loss += losses["total"].item()
+            batch_size = images.shape[0]
+            total_loss += losses["total"].item() * batch_size
             cls_item = float(losses["classification"].item())
             gen_item = float(losses["generation"].item())
-            total_cls += cls_item
-            total_gen += gen_item
-            total_w_cls += float(self.criterion.classification_weight) * cls_item
-            total_w_gen += float(self.criterion.generation_weight) * gen_item
-            num_batches += 1
+            total_cls += cls_item * batch_size
+            total_gen += gen_item * batch_size
+            total_w_cls += float(self.criterion.classification_weight) * cls_item * batch_size
+            total_w_gen += float(self.criterion.generation_weight) * gen_item * batch_size
+            total_samples += batch_size
 
         self.model.train()
-        denom = max(num_batches, 1)
+        denom = max(total_samples, 1)
         return {
             "total": total_loss / denom,
             "classification": total_cls / denom,
@@ -524,8 +613,12 @@ class Trainer:
         ckpts = sorted(ckpt_dir.glob("checkpoint_epoch*.pt"))
         if len(ckpts) > keep:
             for old in ckpts[: len(ckpts) - keep]:
-                old.unlink()
-                logger.debug("Removed old checkpoint: %s", old)
+                try:
+                    old.unlink()
+                    logger.debug("Removed old checkpoint: %s", old)
+                except FileNotFoundError:
+                    # Another process may have already removed this file.
+                    logger.debug("Checkpoint already removed by another worker: %s", old)
 
     def load_checkpoint(self, path: Path | str) -> None:
         """Resume training from a checkpoint.

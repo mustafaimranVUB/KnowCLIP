@@ -262,6 +262,7 @@ class MRRELIndex:
         self.mrrel_path = Path(mrrel_path)
         # (CUI1, REL, CUI2) set for fast lookup
         self._triples: Set[Tuple[str, str, str]] = set()
+        self._neighbors: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)
         self._loaded = False
 
     def load(self) -> None:
@@ -279,6 +280,7 @@ class MRRELIndex:
                     continue
                 cui1, cui2 = row[0], row[4]
                 self._triples.add((cui1, rel, cui2))
+                self._neighbors[cui1].add((rel, cui2))
                 count += 1
         self._loaded = True
         logger.info("MRREL index: %d relationship triples loaded", count)
@@ -292,9 +294,7 @@ class MRRELIndex:
         """Get all (rel, CUI2) neighbours of a CUI."""
         if not self._loaded:
             self.load()
-        return [
-            (rel, c2) for (c1, rel, c2) in self._triples if c1 == cui
-        ]
+        return sorted(self._neighbors.get(cui, set()))
 
 
 # ---------------------------------------------------------------------------

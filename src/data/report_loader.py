@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +29,32 @@ class ReportLoader:
     Parameters:
         reports_root: Root directory containing the report text files
             (typically ``mimic-cxr-reports/files``).
-        prefer_impression: If ``True``, return the impression section when
-            available, falling back to findings.
+        section_preference: Which report section to prioritise. Supported:
+            ``impression``, ``findings``, ``auto``.
+        prefer_impression: Deprecated compatibility flag. If provided, it
+            maps to ``section_preference`` and is ignored otherwise.
     """
 
     def __init__(
         self,
         reports_root: Path | str,
-        prefer_impression: bool = True,
+        section_preference: str = "impression",
+        prefer_impression: Optional[bool] = None,
     ) -> None:
         self.reports_root = Path(reports_root)
-        self.prefer_impression = prefer_impression
+        if prefer_impression is not None:
+            section_preference = "impression" if prefer_impression else "findings"
+
+        pref = str(section_preference or "impression").strip().lower()
+        if pref == "auto":
+            pref = "impression"
+        if pref not in {"impression", "findings"}:
+            logger.warning(
+                "Unknown report section preference '%s'; defaulting to 'impression'",
+                section_preference,
+            )
+            pref = "impression"
+        self.section_preference = pref
 
     # ------------------------------------------------------------------
     # Public API
@@ -64,10 +79,8 @@ class ReportLoader:
     ) -> Optional[str]:
         """Load and return the preferred section of a report.
 
-        Returns the *impression* section if available (and
-        ``prefer_impression`` is set), otherwise the *findings* section.
-        Returns ``None`` if the file does not exist or both sections are
-        empty.
+        Returns the configured preferred section (impression/findings), then
+        falls back to the alternate section, then report body.
         """
         path = self.get_report_path(subject_id, study_id)
         if not path.exists():
@@ -80,12 +93,16 @@ class ReportLoader:
         impression = sections.get("impression", "").strip()
         findings = sections.get("findings", "").strip()
 
-        if self.prefer_impression and impression:
-            return self.clean_text(impression)
-        if findings:
-            return self.clean_text(findings)
-        if impression:
-            return self.clean_text(impression)
+        if self.section_preference == "findings":
+            if findings:
+                return self.clean_text(findings)
+            if impression:
+                return self.clean_text(impression)
+        else:
+            if impression:
+                return self.clean_text(impression)
+            if findings:
+                return self.clean_text(findings)
 
         # Fall back to entire report body (rare edge-case)
         body = self.clean_text(raw)
@@ -108,6 +125,63 @@ class ReportLoader:
         if raw is None:
             return {}
         return self.parse_sections(raw)
+
+    def scan_all_studies(
+        self,
+        max_studies: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Discover (subject_id, study_id) pairs from the directory tree.
+
+        Walks ``self.reports_root`` looking for files matching the MIMIC-CXR
+        convention ``p{prefix}/p{subject_id}/s{study_id}.txt``.
+
+        Args:
+            max_studies: If set, stop after discovering this many unique
+                (subject_id, study_id) pairs.
+
+        Returns:
+            List of dicts with ``subject_id`` (int) and ``study_id`` (int).
+        """
+        studies: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        if not self.reports_root.exists() or not self.reports_root.is_dir():
+            logger.warning(
+                "Reports root does not exist or is not a directory: %s",
+                self.reports_root,
+            )
+            return studies
+
+        # Walk p{prefix}/p{subject_id}/s{study_id}.txt
+        for report_file in sorted(self.reports_root.rglob("s*.txt")):
+            name = report_file.stem  # e.g. "s12345678"
+            parent = report_file.parent.name  # e.g. "p10000032"
+
+            # Validate naming patterns
+            if not name.startswith("s") or not parent.startswith("p"):
+                continue
+
+            try:
+                study_id = int(name[1:])
+                subject_id = int(parent[1:])
+            except (ValueError, IndexError):
+                continue
+
+            key = (subject_id, study_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            studies.append({"subject_id": subject_id, "study_id": study_id})
+
+            if max_studies is not None and len(studies) >= max_studies:
+                break
+
+        logger.info(
+            "Scanned %d unique studies from %s",
+            len(studies),
+            self.reports_root,
+        )
+        return studies
 
     # ------------------------------------------------------------------
     # Section parsing

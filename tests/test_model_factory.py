@@ -165,6 +165,14 @@ class TestNeurosymbolicForward:
             )
 
         assert "attention_weights" in outputs
+        assert "explainability" in outputs
+        explainability = outputs["explainability"]
+        assert "graph" in explainability
+        assert "fusion" in explainability
+        assert "pooling" in explainability
+        assert len(explainability["graph"]["edge_attention_layers"]) == neurosymbolic_config.knowledge_encoder.num_gat_layers
+        assert len(explainability["fusion"]["per_layer"]) == neurosymbolic_config.fusion_module.num_fusion_layers
+        assert explainability["pooling"]["weights"].shape[0] == 2
 
 
 class TestGradientFlow:

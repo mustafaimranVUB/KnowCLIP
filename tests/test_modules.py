@@ -93,6 +93,24 @@ class TestKnowledgeEncoder:
         norms = torch.norm(out, dim=1)
         assert torch.allclose(norms, torch.ones_like(norms), atol=0.1)
 
+    def test_returns_attention_trace(self):
+        from src.models.knowledge_encoder import GATv2KnowledgeEncoder
+
+        cfg = KnowledgeEncoderConfig()
+        encoder = GATv2KnowledgeEncoder(cfg)
+        encoder.eval()
+
+        x = torch.randn(4, 768)
+        edge_index = torch.tensor([[0, 1], [1, 2]])
+        edge_type = torch.tensor([0, 1])
+
+        with torch.no_grad():
+            out, trace = encoder(x, edge_index, edge_type, return_attention=True)
+
+        assert out.shape == (4, 768)
+        assert len(trace["edge_attention_layers"]) == cfg.num_gat_layers
+        assert "attention_vector" in trace["edge_attention_layers"][0]
+
 
 class TestFusionModule:
     def test_cross_attention_shape(self):
@@ -124,6 +142,8 @@ class TestFusionModule:
             out, attn = fusion(Z_k, Z_v, return_attention=True)
 
         assert attn is not None
+        assert len(attn["per_layer"]) == cfg.num_fusion_layers
+        assert attn["last_layer"].shape == (2, cfg.num_heads, 3, 196)
 
 
 class TestClassificationHead:
@@ -171,6 +191,29 @@ class TestReportDecoder:
         decoder = TransformerReportDecoder(cfg)
         assert decoder.get_vocab_size() == 50257
 
+    def test_transformer_return_attention_is_backward_compatible(self):
+        from src.models.decoder import TransformerReportDecoder
+
+        cfg = ReportGenerationConfig(
+            vocab_size=1000,
+            max_report_length=32,
+            num_decoder_layers=2,
+            decoder_dim=768,
+            num_decoder_heads=8,
+            decoder_ffn_dim=2048,
+        )
+        decoder = TransformerReportDecoder(cfg)
+        decoder.eval()
+
+        encoder_output = torch.randn(2, 10, 768)
+        target_ids = torch.randint(0, 1000, (2, 16))
+
+        with torch.no_grad():
+            logits, trace = decoder(encoder_output, target_ids, return_attention=True)
+
+        assert logits.shape == (2, 16, 1000)
+        assert trace is None
+
 
 class TestSelfAttentionPooling:
     def test_output_shape(self):
@@ -184,3 +227,20 @@ class TestSelfAttentionPooling:
             out = pool(x)
 
         assert out.shape == (2, 768)
+
+    def test_masked_attention_weights_zero_out_padding(self):
+        from src.models.fusion import SelfAttentionPooling
+
+        pool = SelfAttentionPooling(hidden_dim=768)
+        pool.eval()
+
+        x = torch.randn(2, 4, 768)
+        mask = torch.tensor([[True, True, False, False], [True, False, False, False]])
+
+        with torch.no_grad():
+            out, weights = pool(x, mask=mask, return_attention=True)
+
+        assert out.shape == (2, 768)
+        assert weights.shape == (2, 4)
+        assert torch.allclose(weights[0, 2:], torch.zeros(2), atol=1e-6)
+        assert torch.allclose(weights[1, 1:], torch.zeros(3), atol=1e-6)

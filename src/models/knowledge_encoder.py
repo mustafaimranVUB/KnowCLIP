@@ -77,8 +77,23 @@ class GATv2KnowledgeEncoder(BaseKnowledgeEncoder):
             self.gat_layers.append(gat)
             self.norms.append(nn.LayerNorm(total_out))
 
+        # Residual projection: map input_dim → post-layer-0 dim so that
+        # a skip connection can bridge the dimension change introduced by
+        # concat=True in the first GAT layer (input_dim → hidden_channels * heads).
+        first_layer_out = config.hidden_channels * config.num_attention_heads
+        if config.num_gat_layers >= 2 and config.input_dim != first_layer_out:
+            self.residual_proj = nn.Linear(config.input_dim, first_layer_out)
+        else:
+            self.residual_proj = None
+
         # Output projection
-        final_dim = config.hidden_channels
+        # With 1 GAT layer the sole layer uses concat=True → output is
+        # hidden_channels * heads.  With ≥2 layers the last layer uses
+        # concat=False → output is hidden_channels.
+        if config.num_gat_layers == 1:
+            final_dim = config.hidden_channels * config.num_attention_heads
+        else:
+            final_dim = config.hidden_channels
         self.output_proj = nn.Linear(final_dim, config.output_dim)
 
         self.dropout = nn.Dropout(config.dropout)
@@ -89,7 +104,8 @@ class GATv2KnowledgeEncoder(BaseKnowledgeEncoder):
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
         batch: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_attention: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[str, object]]:
         """Encode graph nodes.
 
         Args:
@@ -105,15 +121,34 @@ class GATv2KnowledgeEncoder(BaseKnowledgeEncoder):
         edge_attr = self.edge_embedding(edge_type)  # (E, edge_dim)
 
         h = x
+        attention_layers: list[dict[str, object]] = []
         for i, (gat, norm) in enumerate(zip(self.gat_layers, self.norms)):
             h_in = h
-            h = gat(h, edge_index, edge_attr=edge_attr)  # GATv2Conv
+            if return_attention:
+                h, (layer_edge_index, alpha) = gat(
+                    h,
+                    edge_index,
+                    edge_attr=edge_attr,
+                    return_attention_weights=True,
+                )
+                attention_layers.append({
+                    "layer_index": i,
+                    "edge_index": layer_edge_index,
+                    "alpha": alpha,
+                    "edge_type": edge_type,
+                    "edge_attr": edge_attr,
+                    "attention_vector": gat.att,
+                })
+            else:
+                h = gat(h, edge_index, edge_attr=edge_attr)  # GATv2Conv
             h = F.elu(h)
             h = norm(h)
             h = self.dropout(h)
 
-            # Residual connection from layer 2 onward (if dims match)
-            if i >= 1 and h.shape == h_in.shape:
+            # Residual connection — project if dimensions mismatch.
+            if i == 0 and self.residual_proj is not None:
+                h = h + self.residual_proj(h_in)
+            elif i >= 1 and h.shape == h_in.shape:
                 h = h + h_in
 
         # Output projection + L2 normalisation
@@ -122,6 +157,12 @@ class GATv2KnowledgeEncoder(BaseKnowledgeEncoder):
         if self.config.normalize_outputs:
             h = F.normalize(h, p=2, dim=-1)
 
+        if return_attention:
+            return h, {
+                "edge_attention_layers": attention_layers,
+                "edge_type": edge_type,
+                "edge_attr": edge_attr,
+            }
         return h
 
     def get_output_dim(self) -> int:

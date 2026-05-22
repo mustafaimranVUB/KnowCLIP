@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Set
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -213,8 +214,7 @@ class SplitManager:
         if dev_subset_frac is not None and 0 < dev_subset_frac < 1.0:
             subjects = df["subject_id"].unique()
             n = max(1, int(len(subjects) * dev_subset_frac))
-            rng = pd.np if hasattr(pd, "np") else __import__("numpy")
-            gen = rng.random.default_rng(seed)
+            gen = np.random.default_rng(seed)
             subset = gen.choice(subjects, size=n, replace=False)
             df = df[df["subject_id"].isin(subset)]
             logger.info(

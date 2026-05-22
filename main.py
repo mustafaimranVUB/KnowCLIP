@@ -5,20 +5,31 @@ Usage
 -----
 .. code-block:: bash
 
-    # Phase I — Build knowledge graph
-    python main.py phase1 --config configs/phase1_kg.yaml
+    python -m main --config configs/phase1_kg_local.yaml phase1
+    python main.py phase1 --config configs/phase1_kg_gpu.yaml
 
-    # Phase II — Train baseline
-    python main.py train --config configs/phase2_baseline.yaml
+    python -m main --config configs/hydra_phase2_baseline_jpg.yaml train
+    python main.py train --config configs/hydra_phase2_baseline_jpg.yaml
+    # Phase II — Train the main neuro-symbolic GPT-2 model
+    python -m main --config configs/phase2_neurosymbolic_gpt2.yaml train
+    python main.py train --config configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml
 
-    # Phase II — Train neuro-symbolic
-    python main.py train --config configs/phase2_neurosymbolic.yaml
-
-    # Evaluate a checkpoint
-    python main.py evaluate --config configs/phase2_neurosymbolic.yaml \\
+    python -m main --config configs/phase2_neurosymbolic_gpt2.yaml evaluate \
+        --checkpoint outputs/checkpoints/best_model.pt --output-dir outputs/evaluation/manual_run
         --checkpoint outputs/checkpoints/best_model.pt
 
-    # Validate installation (no GPU / data needed)
+    python -m main --config configs/phase2_neurosymbolic_gpt2.yaml explain \
+    python main.py explain --config configs/phase2_neurosymbolic_gpt2.yaml \
+        --checkpoint outputs/checkpoints/best_model.pt --split test --max-samples 8
+
+    python -m main --config configs/phase2_neurosymbolic_gpt2.yaml audit-data
+    python main.py audit-data --config configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml
+
+    python -m main --config configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml predict \
+    python main.py predict --config configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml \
+        --checkpoint outputs/checkpoints/best_model.pt --image-path path/to/image.jpg
+
+    python -m main validate
     python main.py validate
 """
 
@@ -57,39 +68,48 @@ logger = logging.getLogger("knoclip")
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
+    def _build_common_parser(*, suppress_defaults: bool) -> argparse.ArgumentParser:
+        common = argparse.ArgumentParser(add_help=False)
+        default = argparse.SUPPRESS if suppress_defaults else None
+        common.add_argument(
+        "--config",
+        type=str,
+        default=default,
+        help="Path to YAML configuration file (default: use built-in defaults).",
+        )
+        common.add_argument(
+        "--seed",
+        type=int,
+        default=default,
+        help="Override random seed.",
+        )
+        common.add_argument(
+        "--device",
+        type=str,
+        default=default,
+        help="Force device (e.g. 'cpu', 'cuda:0').",
+        )
+        common.add_argument(
+        "--log-level",
+        type=str,
+        default=argparse.SUPPRESS if suppress_defaults else "INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        )
+        return common
+
+    root_common = _build_common_parser(suppress_defaults=False)
+    sub_common = _build_common_parser(suppress_defaults=True)
+
     parser = argparse.ArgumentParser(
         prog="KnoCLIP-XAI",
         description="Knowledge-Grounded CLIP for Explainable Chest X-Ray Analysis",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to YAML configuration file (default: use built-in defaults).",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Override random seed.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default=None,
-        help="Force device (e.g. 'cpu', 'cuda:0').",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        parents=[root_common],
     )
 
     sub = parser.add_subparsers(dest="command", help="Pipeline to run.")
 
     # ---- phase1 ----
-    p1 = sub.add_parser("phase1", help="Phase I: Knowledge graph construction.")
+    p1 = sub.add_parser("phase1", help="Phase I: Knowledge graph construction.", parents=[sub_common])
     p1.add_argument("--batch-size", type=int, default=32)
     p1.add_argument("--skip-extraction", action="store_true")
     p1.add_argument("--skip-grounding", action="store_true")
@@ -102,16 +122,99 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     # ---- train ----
-    tr = sub.add_parser("train", help="Phase II: Model training.")
+    tr = sub.add_parser("train", help="Phase II: Model training.", parents=[sub_common])
     tr.add_argument("--resume", type=str, default=None, help="Checkpoint to resume from.")
     tr.add_argument("--no-eval", action="store_true", help="Skip evaluation after training.")
 
     # ---- evaluate ----
-    ev = sub.add_parser("evaluate", help="Evaluate a trained model.")
+    ev = sub.add_parser("evaluate", help="Evaluate a trained model.", parents=[sub_common])
     ev.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
+    ev.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Optional directory for evaluation JSON and plots.",
+    )
+    ev.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Optional evaluation batch size override.",
+    )
+    ev.add_argument(
+        "--generation-max-samples",
+        type=int,
+        default=None,
+        help="Optional cap on report-generation evaluation samples (classification still runs on the full test set).",
+    )
+
+    # ---- explain ----
+    ex = sub.add_parser("explain", help="Export sample-level explainability artefacts.", parents=[sub_common])
+    ex.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
+    ex.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["train", "validate", "test"],
+        help="Dataset split to sample from.",
+    )
+    ex.add_argument(
+        "--max-samples",
+        type=int,
+        default=8,
+        help="Maximum number of studies to export.",
+    )
+    ex.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory where explainability figures and summaries will be written.",
+    )
+
+    # ---- audit-data ----
+    audit = sub.add_parser("audit-data", help="Audit split coverage and report distributions.", parents=[sub_common])
+    audit.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory for audit JSON/Markdown/plots.",
+    )
+
+    # ---- predict ----
+    pred = sub.add_parser("predict", help="Run inference on a single JPG/PNG image.", parents=[sub_common])
+    pred.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
+    pred.add_argument("--image-path", type=str, required=True, help="Path to JPG/PNG image.")
+    pred.add_argument("--subject-id", type=int, default=None, help="Optional subject_id for KG/report lookup.")
+    pred.add_argument("--study-id", type=int, default=None, help="Optional study_id for KG/report lookup.")
+    pred.add_argument("--output-dir", type=str, default=None, help="Optional directory for prediction JSON and figures.")
+    pred.add_argument("--save-explainability", action="store_true", help="Also export explainability figures.")
+
+    # ---- compare ----
+    cmp = sub.add_parser("compare", help="Compare two evaluation artifact directories.", parents=[sub_common])
+    cmp.add_argument("--eval-a", type=str, required=True, help="First evaluation artifact directory.")
+    cmp.add_argument("--eval-b", type=str, required=True, help="Second evaluation artifact directory.")
+    cmp.add_argument("--label-a", type=str, default="model_a", help="Display label for model A.")
+    cmp.add_argument("--label-b", type=str, default="model_b", help="Display label for model B.")
+    cmp.add_argument("--output-dir", type=str, default=None, help="Directory for comparison outputs.")
+
+    # ---- quantitative-xai ----
+    qxai = sub.add_parser("quantitative-xai", help="Evaluate quantitative explainability metrics (TCAR, deletion/insertion).", parents=[sub_common])
+    qxai.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
+    qxai.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Maximum test samples to evaluate (for speed).",
+    )
+    qxai.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory for results (JSON + plots).",
+    )
 
     # ---- validate ----
-    sub.add_parser("validate", help="Validate installation on CPU with dummy data.")
+    sub.add_parser("validate", help="Validate installation on CPU with dummy data.", parents=[sub_common])
 
     return parser.parse_args(argv)
 
@@ -156,9 +259,91 @@ def cmd_evaluate(config: ProjectConfig, args: argparse.Namespace) -> None:
     pipeline = TrainingPipeline(config=config, device=args.device)
     pipeline.setup()
 
-    train_loader, val_loader, test_loader = pipeline.build_dataloaders()
-    results = pipeline.evaluate(test_loader, checkpoint_path=args.checkpoint)
+    val_loader, test_loader = pipeline.build_eval_dataloaders(batch_size=args.batch_size)
+    results = pipeline.evaluate(
+        test_loader,
+        checkpoint_path=args.checkpoint,
+        artifact_dir=args.output_dir,
+        threshold_loader=val_loader,
+        generation_max_samples=getattr(args, "generation_max_samples", None),
+    )
     logger.info("Evaluation results:\n%s", results)
+
+
+def cmd_explain(config: ProjectConfig, args: argparse.Namespace) -> None:
+    """Export per-study explainability artefacts for a trained checkpoint."""
+    from src.pipelines.explainability_pipeline import ExplainabilityPipeline
+
+    pipeline = ExplainabilityPipeline(config=config, device=args.device)
+    results = pipeline.run(
+        checkpoint_path=args.checkpoint,
+        split=args.split,
+        max_samples=args.max_samples,
+        output_dir=args.output_dir,
+    )
+    logger.info("Explainability export complete:\n%s", results)
+
+
+def cmd_audit_data(config: ProjectConfig, args: argparse.Namespace) -> None:
+    """Audit split coverage and report distributions."""
+    from src.pipelines.data_audit_pipeline import DataAuditPipeline
+
+    pipeline = DataAuditPipeline(config=config)
+    results = pipeline.run(output_dir=args.output_dir)
+    splits = results.get("splits", {}) if isinstance(results, dict) else {}
+    logger.info(
+        "Data audit complete. studies(train/val/test)=%s/%s/%s | all_labels_present=%s",
+        splits.get("train", {}).get("num_studies", "n/a"),
+        splits.get("validate", {}).get("num_studies", "n/a"),
+        splits.get("test", {}).get("num_studies", "n/a"),
+        results.get("all_labels_present", {}) if isinstance(results, dict) else {},
+    )
+
+
+def cmd_predict(config: ProjectConfig, args: argparse.Namespace) -> None:
+    """Run inference on a single JPG/PNG image."""
+    from src.pipelines.inference_pipeline import InferencePipeline
+
+    pipeline = InferencePipeline(config=config, device=args.device)
+    results = pipeline.run(
+        checkpoint_path=args.checkpoint,
+        image_path=args.image_path,
+        subject_id=args.subject_id,
+        study_id=args.study_id,
+        output_dir=args.output_dir,
+        save_explainability=args.save_explainability,
+    )
+    logger.info("Inference complete:\n%s", results)
+
+
+def cmd_compare(config: ProjectConfig, args: argparse.Namespace) -> None:
+    """Compare two evaluation directories for ablation analysis."""
+    from src.pipelines.comparison_pipeline import ComparisonPipeline
+
+    _ = config
+    pipeline = ComparisonPipeline()
+    results = pipeline.run(
+        eval_dir_a=args.eval_a,
+        eval_dir_b=args.eval_b,
+        label_a=args.label_a,
+        label_b=args.label_b,
+        output_dir=args.output_dir,
+    )
+    logger.info("Comparison complete:\n%s", results)
+
+
+def cmd_quantitative_xai(config: ProjectConfig, args: argparse.Namespace) -> None:
+    """Evaluate quantitative explainability metrics."""
+    from src.pipelines.quantitative_xai_pipeline import QuantitativeXAIPipeline
+
+    pipeline = QuantitativeXAIPipeline(config=config, device=args.device)
+    results = pipeline.run(
+        checkpoint_path=args.checkpoint,
+        output_dir=args.output_dir,
+        max_samples=args.max_samples,
+    )
+    logger.info("Quantitative XAI evaluation complete.")
+    logger.info("Overall metrics:\n%s", results.get("overall", {}))
 
 
 def cmd_validate(config: ProjectConfig, args: argparse.Namespace) -> None:
@@ -418,6 +603,16 @@ def main(argv: list[str] | None = None) -> None:
         cmd_train(config, args)
     elif args.command == "evaluate":
         cmd_evaluate(config, args)
+    elif args.command == "explain":
+        cmd_explain(config, args)
+    elif args.command == "audit-data":
+        cmd_audit_data(config, args)
+    elif args.command == "predict":
+        cmd_predict(config, args)
+    elif args.command == "compare":
+        cmd_compare(config, args)
+    elif args.command == "quantitative-xai":
+        cmd_quantitative_xai(config, args)
     elif args.command == "validate":
         cmd_validate(config, args)
     else:

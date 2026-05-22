@@ -1,11 +1,8 @@
-# Phase II — Neuro-Symbolic Training with pretrained GPT-2 decoder
+# Phase II — Neuro-Symbolic Training with pretrained GPT-2 decoder (FULL DATASET)
 # Usage: python main.py train --config configs/phase2_neurosymbolic_gpt2.yaml
+# Kept for backward compatibility with existing scripts/docs.
 #
-# Key differences from phase2_neurosymbolic.yaml:
-#   - decoder_type: "gpt2"  (pretrained GPT-2 with cross-attention bridges)
-#   - generation_loss_weight: 0.5  (elevated — generation is the primary goal)
-#   - checkpoint_selection_mode: "val_loss" (balances cls + gen quality)
-#   - beam_size: 4
+# Optimised — ablation-backed settings (see hydra_phase2_neurosymbolic_gpt2_jpg.yaml for details).
 
 model:
   use_kg: true
@@ -48,8 +45,6 @@ model:
     decoder_type: "gpt2"
     vocab_size: 50257
     max_report_length: 128
-    # num_decoder_layers / decoder_dim / decoder_ffn_dim are ignored for GPT-2
-    # (uses pretrained GPT-2's 12-layer / 768-dim architecture).
     num_decoder_layers: 12
     decoder_dim: 768
     num_decoder_heads: 8
@@ -59,34 +54,36 @@ model:
     repetition_penalty: 1.35
     no_repeat_ngram_size: 3
     length_penalty: 1.0
+    prompt_prefix: "IMPRESSION:"
     scheduled_sampling_enabled: true
     scheduled_sampling_start_ratio: 1.0
     scheduled_sampling_end_ratio: 0.5
-    scheduled_sampling_decay_epochs: 40
+    scheduled_sampling_decay_epochs: 20
+    label_smoothing: 0.1
 
 data:
-  mimic_root: "${VSC_SCRATCH}/mimic-cxr"
-  reports_root: "${VSC_DATA}/thesis/data/MIMIC-CXR-RRG_reports/files"
-  split_csv: "${VSC_SCRATCH}/mimic-cxr/mimic-cxr-2.0.0-split.csv"
-  chexpert_csv: "${VSC_SCRATCH}/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv"
-  kg_artifacts_dir: "${VSC_DATA}/thesis/outputs/KG"
-  split_strategy: "subset_hash"
-  subset_train_ratio: 0.70
-  subset_val_ratio: 0.15
-  subset_test_ratio: 0.15
-  batch_size: 16
-  num_workers: 4
+  mimic_root: "${MIMIC_ROOT}"
+  reports_root: "${MIMIC_REPORTS}"
+  split_csv: "${MIMIC_SPLIT_CSV}"
+  chexpert_csv: "${MIMIC_CHEXPERT_CSV}"
+  kg_artifacts_dir: "${KG_ARTIFACTS_DIR}"
+  report_section_preference: "impression"
+  split_strategy: "official"
+  image_suffixes: [".jpg", ".jpeg", ".png"]
+  enforce_all_labels_per_split: false
+  batch_size: 32
+  num_workers: 8
   pin_memory: true
 
 training:
   learning_rate: 1.0e-4
   weight_decay: 0.01
   warmup_steps: 1000
-  num_epochs: 150
+  num_epochs: 80
   gradient_clip_norm: 1.0
   accumulation_steps: 4
   mixed_precision: true
-  early_stopping_patience: 20
+  early_stopping_patience: 12
 
   classification_loss_type: "bce"
   use_pos_weight: true
@@ -95,7 +92,7 @@ training:
   focal_alpha: null
 
   two_stage_training: true
-  stage1_epochs: 10
+  stage1_epochs: 8
   stage1_classification_weight: 0.0
   stage1_freeze_visual_encoder: true
   stage1_freeze_classification_head: true
@@ -103,20 +100,24 @@ training:
   stage1_early_stopping_patience: null
   reset_best_metric_on_stage2: true
 
-  # Use val_loss so the best checkpoint balances BOTH classification and generation.
-  checkpoint_selection_mode: "val_loss"
+  checkpoint_selection_mode: "classification_priority"
   checkpoint_generation_guard_max_val_gen_loss: null
-
   generation_debug_samples: 5
+  generation_eval_max_samples: 128
 
   classification_loss_weight: 1.0
-  # Elevated from 0.1 — generation is the primary thesis objective.
-  generation_loss_weight: 0.5
+  generation_loss_weight: 0.25
+
+  # Balanced multilabel sampler: up-weights rare pathologies during training
+  sampler_strategy: "balanced_multilabel"
+  sampler_rare_label_power: 1.0
+  sampler_max_weight: 10.0
 
   seed: 42
 
-  checkpoint_dir: "${VSC_DATA}/thesis/outputs/checkpoints/neurosymbolic_gpt2"
+  checkpoint_dir: "${CHECKPOINT_DIR}"
   save_every_n_epochs: 5
-  keep_last_n_checkpoints: 1
+  keep_last_n_checkpoints: 2
 
-  log_dir: "${VSC_DATA}/thesis/outputs/logs"
+  log_dir: "${LOG_DIR}"
+  log_every_n_steps: 100
