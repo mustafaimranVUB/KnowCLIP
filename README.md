@@ -352,11 +352,109 @@ python scripts/visualize_kg.py --artifact-dir outputs/KG --port 8502
 
 ---
 
+## Real-Time Inference Web Application
+
+A lightweight backend + frontend lets supervisors and collaborators run inference interactively without touching the command line.
+
+### Backend (FastAPI)
+
+```bash
+# Required env vars
+export MODEL_CONFIG=configs/hydra_phase2_neurosymbolic_gpt2_jpg.yaml
+export MODEL_CHECKPOINT=outputs/checkpoints/neurosymbolic_gpt2_hydra_jpg/best_model.pt
+export KG_ARTIFACTS_DIR=outputs/KG          # only for neuro-symbolic configs
+
+# Start the API server (model loads once, all requests reuse it)
+bash backend/start.sh
+```
+
+The server starts at `http://0.0.0.0:8000` by default.
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Liveness probe — returns model_loaded + device |
+| `/predict` | POST | Upload a JPG/PNG and get classification + report |
+| `/classes` | GET | List the 14 CheXpert class names |
+| `/config` | GET | Non-sensitive model configuration info |
+
+Full API documentation is auto-generated at `http://localhost:8000/docs` (Swagger UI).
+
+Install backend extras before first launch:
+```bash
+pip install -r backend/requirements.txt
+```
+
+### Frontend
+
+No installation required — open the HTML file in any modern browser:
+
+```bash
+# Option 1 — open directly
+xdg-open frontend/index.html   # Linux
+open frontend/index.html       # macOS
+
+# Option 2 — serve (optional, avoids any browser CORS quirks)
+python -m http.server 3000 --directory frontend
+# then open http://localhost:3000
+```
+
+The UI lets you:
+- Configure the backend API URL (defaults to `http://localhost:8000`)
+- Test the connection with a single click
+- Drag-and-drop or browse for a chest X-ray (JPG/PNG)
+- Run analysis and see classification probabilities + the generated report
+- Optionally request explainability artefacts
+
+---
+
+## Model Selection (Hydra — run after training)
+
+After training all runs on Hydra, submit evaluation for all configurations at once:
+
+```bash
+# From the Hydra login node, inside the repo directory
+bash scripts/hydra/submit_full_comparison.sh
+```
+
+This submits one evaluation job per model (9 total): impression, findings, and all ablations.
+
+Once all eval jobs are complete, collect results locally:
+
+```bash
+# Rank all models by macro AUC-ROC (primary metric)
+python scripts/local/select_best_model.py \
+  --eval-dirs \
+    outputs/evaluation/ns_impression_s1full/best_model \
+    outputs/evaluation/ns_findings_s1full/best_model \
+    outputs/evaluation/ablation_genw025/best_model \
+    outputs/evaluation/ablation_gat1/best_model \
+    outputs/evaluation/ablation_gat3/best_model \
+    outputs/evaluation/ablation_no_kg_gpt2/best_model \
+    outputs/evaluation/baseline_hydra_jpg/best_model \
+  --primary-metric macro_auc \
+  --output-json outputs/comparisons/ranking.json
+
+# Generate a full Markdown comparison report
+python scripts/local/model_comparison_report.py \
+  --eval-dirs outputs/evaluation/*/best_model \
+  --output-md outputs/comparisons/model_comparison_report.md
+```
+
+---
+
 ## Project Structure
 
 ```
 Clone repo/
 ├── main.py                          # CLI entry point (phase1/train/evaluate/explain/audit-data/predict/compare/validate)
+├── backend/                         # FastAPI real-time inference API
+│   ├── app.py                       # REST endpoints (/health /predict /classes /config)
+│   ├── start.sh                     # Launch script (reads MODEL_CONFIG, MODEL_CHECKPOINT env vars)
+│   ├── requirements.txt             # fastapi + uvicorn + python-multipart
+│   └── config_example.env           # Template env file
+├── frontend/                        # Standalone web UI (no build step)
+│   ├── index.html                   # Single-page app — open in any browser
+│   └── README.md                    # Usage instructions
 ├── configs/
 │   ├── phase1_kg.yaml
 │   ├── phase1_kg_gpu.yaml
@@ -366,6 +464,7 @@ Clone repo/
 │   ├── phase2_neurosymbolic_gpt2.yaml
 │   ├── hydra_phase2_baseline_jpg.yaml
 │   ├── hydra_phase2_neurosymbolic_gpt2_jpg.yaml
+│   ├── hydra_phase2_neurosymbolic_gpt2_jpg_findings.yaml
 │   └── ablation_*.yaml
 ├── src/
 │   ├── data/                        # dataset, splits, transforms, report/image loading
@@ -375,7 +474,11 @@ Clone repo/
 │   ├── evaluation/                  # metrics, explainability, artifact export, statistics
 │   └── pipelines/                   # training, explainability, inference, audit, comparison, phase1
 ├── scripts/
-│   ├── hydra/                       # run_phase1, train/evaluate/explain launchers, ablation submitters
+│   ├── hydra/                       # run_phase1, train/evaluate/explain launchers, ablation/comparison submitters
+│   │   └── submit_full_comparison.sh # Submit eval jobs for all 9 model variants
+│   ├── local/
+│   │   ├── select_best_model.py     # Rank eval dirs and declare winner
+│   │   └── model_comparison_report.py # Generate Markdown comparison report
 │   └── visualize_kg.py              # KG viewer launcher
 ├── kg_viewer/                       # Streamlit KG viewer
 ├── tests/                           # 116 tests, 3 skipped in the current validated state

@@ -1,4 +1,5 @@
 # Large data directories (keep src/data and data/MIMIC-CXR-RRG_reports for grounding)
+
 data/p10/
 data/MIMIC-CXR-RRG_reports/files/
 umls-2025AB-metathesaurus-full/
@@ -7,9 +8,10 @@ research/
 documents/
 
 # Environments and Cache
+
 .venv/
 envs/
-__pycache__/
+**pycache**/
 .conda/
 .pytest_cache/
 hf_cache/
@@ -21,30 +23,40 @@ requirements.txt
 requirements-dev.txt
 
 # Build artifacts
+
 build/
 dist/
-*.egg-info/
+\*.egg-info/
 .eggs/
 
 # Git and Configs
+
 .git/
 .gitignore
 .github/
 .cursor/
 .copilot/
+.aiglobal
+.claude/
+.gihub/
 
 # Hydra/MLflow outputs (sync separately for speed)
-outputs/checkpoints/
+
+<!-- outputs/checkpoints/
 outputs/KG/
 outputs/KG_outputs/
 outputs/Final/
+outputs/KG_findings/ -->
+
+outputs/
 mlruns/
 
 # OS/Editor specific
-.DS_Store
+
+.DS*Store
 .vscode/
 *.pyc
-*.pyo
-*.pyd
-*.so
+_.pyo
+_.pyd
+\_.so
 .Python

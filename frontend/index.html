@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnoCLIP-XAI — Knowledge-Grounded Radiology AI</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩻</text></svg>" />
+    <!-- vis-network for interactive KG visualization.
+         Load the vendored local copy first so the graph works offline / in a
+         demo without internet; fall back to the CDN only if the local file
+         is missing. -->
+    <script src="vis-network.min.js"
+            onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js';document.head.appendChild(s);"></script>
+    <style>
+        /* ─── Design tokens ─────────────────────────────────────────────────────── */
+        :root {
+            --bg: #ffffff;
+            --surface: #f8fafc;
+            --surface-2: #f1f5f9;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --accent-light: #eff6ff;
+            --danger: #dc2626;
+            --danger-bg: #fef2f2;
+            --warn: #d97706;
+            --warn-bg: #fffbeb;
+            --ok: #16a34a;
+            --ok-bg: #f0fdf4;
+            --radius: 8px;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, .06);
+            --shadow: 0 1px 3px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .05);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f172a;
+                --surface: #1e293b;
+                --surface-2: #273549;
+                --border: #334155;
+                --text: #f1f5f9;
+                --text-muted: #94a3b8;
+                --accent: #3b82f6;
+                --accent-hover: #2563eb;
+                --accent-light: #1e3a5f;
+                --danger: #f87171;
+                --danger-bg: #2d1515;
+                --warn: #fbbf24;
+                --warn-bg: #2d1f08;
+                --ok: #4ade80;
+                --ok-bg: #0d2d1a;
+            }
+        }
+
+        /* ─── Reset & base ──────────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                "Helvetica Neue", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text);
+            background: var(--bg);
+            min-height: 100vh;
+        }
+
+        /* ─── Header ────────────────────────────────────────────────────────────── */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .header-inner {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .logo-mark {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .logo-mark svg {
+            width: 20px;
+            height: 20px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .header-titles h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); line-height: 1.2; }
+        .header-titles p  { font-size: 11px; color: var(--text-muted); letter-spacing: .01em; }
+
+        /* ─── Page layout ───────────────────────────────────────────────────────── */
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        /* ─── Card ──────────────────────────────────────────────────────────────── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-header[role="button"] {
+            cursor: pointer;
+            user-select: none;
+            border-radius: var(--radius) var(--radius) 0 0;
+            transition: background .15s;
+        }
+
+        .card-header[role="button"]:hover { background: var(--surface-2); }
+
+        .card-header[role="button"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+
+        .card-header[role="button"].collapsed {
+            border-bottom: none;
+            border-radius: var(--radius);
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title svg {
+            width: 15px;
+            height: 15px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .chevron {
+            width: 16px;
+            height: 16px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: transform .2s ease;
+            flex-shrink: 0;
+        }
+
+        .collapsed .chevron { transform: rotate(-90deg); }
+
+        .card-body { padding: 18px; }
+        .card-body.hidden { display: none; }
+
+        /* ─── Form elements ─────────────────────────────────────────────────────── */
+        .field { display: flex; flex-direction: column; gap: 5px; }
+        .field label { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+
+        .input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.4;
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        .input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+        }
+
+        .input::placeholder { color: var(--text-muted); opacity: .7; }
+
+        /* ─── Buttons ───────────────────────────────────────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background .15s, opacity .15s, transform .1s;
+        }
+
+        .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .btn:active:not(:disabled) { transform: scale(0.98); }
+        .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+        .btn svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0;
+        }
+
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover:not(:disabled) { background: var(--border); }
+
+        /* ─── API config row ────────────────────────────────────────────────────── */
+        .api-row { display: flex; gap: 10px; align-items: flex-end; }
+        .api-row .field { flex: 1; }
+
+        .connection-status-row {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* ─── Badge ─────────────────────────────────────────────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .badge-idle { background: var(--surface-2); color: var(--text-muted); }
+        .badge-idle .dot { background: var(--text-muted); }
+        .badge-ok { background: var(--ok-bg); color: var(--ok); }
+        .badge-ok .dot { background: var(--ok); }
+        .badge-error { background: var(--danger-bg); color: var(--danger); }
+        .badge-error .dot { background: var(--danger); }
+        .badge-meta { font-size: 11px; color: var(--text-muted); }
+
+        /* ─── Drop zone ─────────────────────────────────────────────────────────── */
+        .drop-zone {
+            position: relative;
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 44px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+        }
+
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
+        .drop-zone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .drop-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .drop-icon svg {
+            width: 42px;
+            height: 42px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            margin-bottom: 12px;
+        }
+
+        .drop-text { font-size: 14px; font-weight: 500; color: var(--text); }
+        .drop-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        /* ─── Preview ───────────────────────────────────────────────────────────── */
+        .preview-wrap {
+            margin-top: 16px;
+            display: none;
+            align-items: center;
+            gap: 14px;
+            padding: 12px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .preview-wrap.visible { display: flex; }
+
+        .preview-wrap img {
+            max-height: 160px;
+            max-width: 160px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .preview-meta { flex: 1; min-width: 0; }
+        .preview-meta .pname { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .preview-meta .psize { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+        /* ─── Options / checkbox ────────────────────────────────────────────────── */
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        @media (max-width: 480px) { .options-grid { grid-template-columns: 1fr; } }
+
+        .checkbox-label { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; cursor: pointer; }
+        .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+        .checkbox-text { font-size: 13px; color: var(--text); }
+        .checkbox-text small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+        .analyze-row { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .btn-analyze { padding: 9px 26px; font-size: 14px; }
+
+        /* ─── Spinner ───────────────────────────────────────────────────────────── */
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, .3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .65s linear infinite;
+            flex-shrink: 0;
+        }
+
+        /* ─── Error banner ──────────────────────────────────────────────────────── */
+        .error-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger);
+            border-radius: var(--radius);
+            color: var(--danger);
+            font-size: 13px;
+        }
+
+        .error-banner svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--danger);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .error-msg { flex: 1; }
+        .error-dismiss { background: none; border: none; color: var(--danger); font-size: 18px; line-height: 1; cursor: pointer; padding: 0; flex-shrink: 0; }
+        .error-dismiss:focus-visible { outline: 2px solid var(--danger); border-radius: 3px; }
+
+        /* ─── Results layout ────────────────────────────────────────────────────── */
+        .results-layout { display: grid; grid-template-columns: 200px 1fr; gap: 22px; }
+        @media (max-width: 640px) { .results-layout { grid-template-columns: 1fr; } }
+
+        .result-thumb img { width: 100%; max-width: 200px; border-radius: 6px; border: 1px solid var(--border); object-fit: contain; }
+        .result-thumb-name { font-size: 11px; color: var(--text-muted); margin-top: 5px; text-align: center; word-break: break-all; }
+
+        /* ─── Tabs ──────────────────────────────────────────────────────────────── */
+        .tab-nav { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+
+        .tab-btn {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            cursor: pointer;
+            transition: color .15s, border-color .15s;
+        }
+
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ─── Classification bars ───────────────────────────────────────────────── */
+        .class-list { display: flex; flex-direction: column; gap: 9px; }
+        .class-row { display: flex; flex-direction: column; gap: 3px; }
+        .class-row-header { display: flex; justify-content: space-between; align-items: baseline; }
+        .class-name { font-size: 12px; font-weight: 500; color: var(--text); }
+        .class-pct { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .pct-danger { color: var(--danger); }
+        .pct-warning { color: var(--warn); }
+        .pct-ok { color: var(--ok); }
+        .bar-track { height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 3px; transition: width .5s cubic-bezier(.4, 0, .2, 1); }
+        .fill-danger { background: var(--danger); }
+        .fill-warning { background: var(--warn); }
+        .fill-ok { background: var(--ok); }
+
+        /* ─── Clinical interpretation ───────────────────────────────────────────── */
+        .verdict {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
+            border: 1px solid transparent;
+        }
+        .verdict-normal   { background: var(--ok-bg);     border-color: var(--ok); }
+        .verdict-abnormal { background: var(--danger-bg); border-color: var(--danger); }
+        .verdict-icon {
+            flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 17px; color: #fff;
+        }
+        .verdict-normal   .verdict-icon { background: var(--ok); }
+        .verdict-abnormal .verdict-icon { background: var(--danger); }
+        .verdict-headline { font-size: 14px; font-weight: 700; letter-spacing: .2px; }
+        .verdict-normal   .verdict-headline { color: var(--ok); }
+        .verdict-abnormal .verdict-headline { color: var(--danger); }
+        .verdict-detail { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .interp-note {
+            font-size: 11.5px; line-height: 1.5; color: var(--warn);
+            background: var(--warn-bg); border: 1px solid var(--warn);
+            border-radius: 6px; padding: 8px 10px; margin-bottom: 14px;
+        }
+
+        .finding-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 9px; }
+        .finding-group-title {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .6px; color: var(--text-muted);
+        }
+        .finding-group-title.pos  { color: var(--danger); }
+        .finding-group-title.none { color: var(--ok); }
+        details.neg-details > summary { cursor: pointer; list-style: none; padding: 4px 0; }
+        details.neg-details > summary::-webkit-details-marker { display: none; }
+        details.neg-details .chev { transition: transform .2s; display: inline-block; }
+        details.neg-details[open] .chev { transform: rotate(90deg); }
+
+        .conf-badge {
+            font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .4px; padding: 1px 6px; border-radius: 10px; vertical-align: middle;
+        }
+        .conf-high     { background: var(--danger); color: #fff; }
+        .conf-moderate { background: var(--warn);   color: #fff; }
+        .conf-low      { background: var(--surface-2); color: var(--text-muted); }
+
+        .bar-track { position: relative; }
+        .fill-tier-high     { background: var(--danger); }
+        .fill-tier-moderate { background: var(--warn); }
+        .fill-tier-low      { background: #9ca3af; }
+        .thr-marker {
+            position: absolute; top: -1px; width: 2px; height: 7px;
+            background: var(--text); opacity: .55; transform: translateX(-1px);
+        }
+
+        .raw-report { margin-top: 10px; }
+        .raw-report > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
+        .raw-report-pre {
+            margin-top: 8px; padding: 10px; background: var(--surface-2);
+            border-radius: 6px; font-size: 11.5px; line-height: 1.5;
+            white-space: pre-wrap; word-break: break-word; color: var(--text-muted);
+            max-height: 220px; overflow-y: auto;
+        }
+
+        /* ─── Report panel ──────────────────────────────────────────────────────── */
+        .report-area {
+            width: 100%;
+            min-height: 210px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 13px;
+            line-height: 1.75;
+            resize: vertical;
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        .report-area:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .15); }
+        .copy-row { margin-top: 8px; display: flex; justify-content: flex-end; }
+
+        /* ─── Result footer ─────────────────────────────────────────────────────── */
+        .result-footer {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .result-footer svg {
+            width: 12px;
+            height: 12px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* ─── KG stats grid ─────────────────────────────────────────────────────── */
+        .kg-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .kg-stat-box {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 14px;
+        }
+
+        .kg-stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+        .kg-stat-value { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+        /* ─── KG explorer two-col layout ────────────────────────────────────────── */
+        .kg-explorer-layout { display: grid; grid-template-columns: 260px 1fr; gap: 18px; }
+        @media (max-width: 700px) { .kg-explorer-layout { grid-template-columns: 1fr; } }
+
+        .kg-sidebar { display: flex; flex-direction: column; gap: 14px; }
+
+        /* ─── KG graph container ────────────────────────────────────────────────── */
+        .kg-graph-container {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            height: 480px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kg-graph-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* ─── KG node search table ──────────────────────────────────────────────── */
+        .kg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .kg-table th, .kg-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+        .kg-table th { font-weight: 600; color: var(--text-muted); background: var(--surface-2); }
+        .kg-table td { color: var(--text); }
+        .kg-table tbody tr:hover { background: var(--surface-2); }
+
+        .kg-node-type {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+
+        .kg-node-type-anatomy     { background: #dbeafe; color: #1e40af; }
+        .kg-node-type-observation { background: #fee2e2; color: #991b1b; }
+        .kg-node-type-measurement { background: #ede9fe; color: #5b21b6; }
+        .kg-node-type-unknown     { background: var(--surface-2); color: var(--text-muted); }
+
+        @media (prefers-color-scheme: dark) {
+            .kg-node-type-anatomy     { background: #1e3a5f; color: #93c5fd; }
+            .kg-node-type-observation { background: #450a0a; color: #fca5a5; }
+            .kg-node-type-measurement { background: #2e1065; color: #c4b5fd; }
+        }
+
+        /* ─── Section label ─────────────────────────────────────────────────────── */
+        .section-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+
+        /* ─── Info note ─────────────────────────────────────────────────────────── */
+        .info-note { font-size: 12px; color: var(--text-muted); padding: 8px 12px; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
+
+        /* ─── Utilities ─────────────────────────────────────────────────────────── */
+        .hidden { display: none !important; }
+        .hint-text { font-size: 12px; color: var(--text-muted); }
+        .row-gap8 { display: flex; gap: 8px; }
+
+        /* ─── Resource usage panel ──────────────────────────────────────────────── */
+        .res-gauge-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+        .res-gauge-label { font-size: 11px; color: var(--text-muted); width: 90px; flex-shrink: 0; }
+        .res-gauge-value { font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 110px; text-align: right; }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="header-inner">
+            <div class="logo-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4.5 6.375a4.125 4.125 0 1 0 8.25 0 4.125 4.125 0 0 0-8.25 0" />
+                    <path d="M17 11a4 4 0 0 1 4 4v1a3 3 0 0 1-3 3h-1" />
+                    <path d="M12.75 10.5V15a4.25 4.25 0 0 1-4.25 4.25h0A4.25 4.25 0 0 1 4.25 15v-2" />
+                    <circle cx="17" cy="19" r="1.5" />
+                </svg>
+            </div>
+            <div class="header-titles">
+                <h1>KnoCLIP-XAI</h1>
+                <p>Knowledge-Grounded Radiology AI</p>
+            </div>
+        </div>
+    </header>
+
+    <main>
+
+        <!-- Error banner -->
+        <div id="errBanner" class="error-banner hidden" role="alert" aria-live="assertive">
+            <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span id="errMsg" class="error-msg"></span>
+            <button class="error-dismiss" aria-label="Dismiss error" onclick="dismissError()">×</button>
+        </div>
+
+        <!-- ─── API Configuration ─────────────────────────────────────────────── -->
+        <div class="card">
+            <div class="card-header" id="apiHdr" role="button" tabindex="0" aria-expanded="true" aria-controls="apiBody"
+                onclick="toggleCard('apiBody','apiHdr')"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCard('apiBody','apiHdr');}">
+                <span class="card-title">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                    </svg>
+                    API Configuration
+                </span>
+                <svg class="chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+            </div>
+            <div class="card-body" id="apiBody">
+                <div class="api-row">
+                    <div class="field">
+                        <label for="apiUrl">API URL</label>
+                        <input class="input" id="apiUrl" type="url" value="http://localhost:8001"
+                            placeholder="http://localhost:8001" aria-label="Backend API base URL" />
+                    </div>
+                    <button class="btn btn-secondary" id="testBtn" onclick="testConnection()" aria-label="Test API connection">
+                        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                        Test Connection
+                    </button>
+                </div>
+                <div class="connection-status-row">
+                    <div id="statusBadge" class="badge badge-idle">
+                        <span class="dot"></span>
+                        <span id="statusLabel">Not tested</span>
+                    </div>
+                    <span id="statusMeta" class="badge-meta"></span>
+                    <div id="kgStatusBadge" class="badge badge-idle hidden">
+                        <span class="dot"></span>
+                        <span id="kgStatusLabel">KG</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Resource Usage ──────────────────────────────────────────────── -->
+        <div class="card">
+            <div class="card-header" id="resHdr" role="button" tabindex="0" aria-expanded="true" aria-controls="resBody"
+                onclick="toggleCard('resBody','resHdr')"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCard('resBody','resHdr');}">
+                <span class="card-title">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="2" y="3" width="20" height="14" rx="2" />
+                        <path d="M8 21h8M12 17v4" />
+                        <path d="M7 8h10M7 12h6" />
+                    </svg>
+                    Resource Usage
+                </span>
+                <svg class="chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+            </div>
+            <div class="card-body" id="resBody">
+                <div id="resNotConnected" class="info-note">Test the API connection above to see live resource gauges.</div>
+                <div id="resGauges" class="hidden">
+                    <div id="resGpuSection">
+                        <p class="section-label" id="resGpuName" style="margin-bottom:8px;">GPU</p>
+                        <div class="res-gauge-row">
+                            <span class="res-gauge-label">VRAM used</span>
+                            <div class="bar-track" style="flex:1;height:7px;">
+                                <div class="bar-fill fill-danger" id="resGpuMemBar" style="width:0%"></div>
+                            </div>
+                            <span class="res-gauge-value" id="resGpuMemText">— / —</span>
+                        </div>
+                        <div class="res-gauge-row" id="resGpuUtilRow">
+                            <span class="res-gauge-label">GPU util</span>
+                            <div class="bar-track" style="flex:1;height:7px;">
+                                <div class="bar-fill fill-warning" id="resGpuUtilBar" style="width:0%"></div>
+                            </div>
+                            <span class="res-gauge-value" id="resGpuUtilText">—%</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <p class="section-label" style="margin-bottom:8px;">Server</p>
+                        <div class="res-gauge-row">
+                            <span class="res-gauge-label">CPU</span>
+                            <div class="bar-track" style="flex:1;height:7px;">
+                                <div class="bar-fill fill-ok" id="resCpuBar" style="width:0%"></div>
+                            </div>
+                            <span class="res-gauge-value" id="resCpuText">—%</span>
+                        </div>
+                        <div class="res-gauge-row">
+                            <span class="res-gauge-label">RAM</span>
+                            <div class="bar-track" style="flex:1;height:7px;">
+                                <div class="bar-fill fill-ok" id="resRamBar" style="width:0%"></div>
+                            </div>
+                            <span class="res-gauge-value" id="resRamText">— / —</span>
+                        </div>
+                        <div class="res-gauge-row">
+                            <span class="res-gauge-label">Process RSS</span>
+                            <span class="res-gauge-value" id="resRssText">—</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Per-inference strip, shown after each /predict -->
+                <div id="resInference" class="hidden" style="margin-top:14px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;">
+                    <p class="section-label" style="margin-bottom:5px;">Last Inference Cost</p>
+                    <p id="resInferenceText" style="font-size:12px;color:var(--text-muted);line-height:1.7;"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Upload ───────────────────────────────────────────────────────── -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    Upload X-ray
+                </span>
+            </div>
+            <div class="card-body">
+
+                <div class="drop-zone" id="dropZone" role="button" tabindex="0"
+                    aria-label="Upload chest X-ray image — click or drag and drop"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('fileInput').click();}">
+                    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png" aria-label="Select chest X-ray image file" />
+                    <div class="drop-icon">
+                        <svg viewBox="0 0 24 24">
+                            <polyline points="16 16 12 12 8 16" />
+                            <line x1="12" y1="12" x2="12" y2="21" />
+                            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+                        </svg>
+                    </div>
+                    <p class="drop-text">Drop chest X-ray here or click to browse</p>
+                    <p class="drop-hint">Accepts .jpg, .jpeg, .png · Max 10 MB</p>
+                </div>
+
+                <div class="preview-wrap" id="previewWrap">
+                    <img id="previewImg" src="" alt="Selected X-ray preview" />
+                    <div class="preview-meta">
+                        <p class="pname" id="previewName"></p>
+                        <p class="psize" id="previewSize"></p>
+                    </div>
+                </div>
+
+                <div class="options-grid">
+                    <div class="field">
+                        <label for="subjectId">Subject ID <span style="font-weight:400;opacity:.65;"></span></label>
+                        <input class="input" id="subjectId" type="number" min="0" placeholder="e.g. 10000032"
+                            aria-label="Patient subject ID for knowledge graph lookup" />
+                    </div>
+                    <div class="field">
+                        <label for="studyId">Study ID <span style="font-weight:400;opacity:.65;"></span></label>
+                        <input class="input" id="studyId" type="number" min="0" placeholder="e.g. 50414267"
+                            aria-label="Study ID for knowledge graph lookup" />
+                    </div>
+                </div>
+
+                <label class="checkbox-label" for="xaiCheck">
+                    <input type="checkbox" id="xaiCheck" aria-label="Include explainability analysis (GradCAM and LIME, slower)" />
+                    <span class="checkbox-text">
+                        Include explainability analysis
+                        <small>Generates GradCAM attention maps and LIME explanations — increases processing time</small>
+                    </span>
+                </label>
+
+                <div class="analyze-row">
+                    <button class="btn btn-primary btn-analyze" id="analyzeBtn" disabled onclick="analyze()"
+                        aria-label="Analyze uploaded chest X-ray">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        Analyze
+                    </button>
+                    <span id="analyzeHint" class="hint-text">Select an image to begin</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Results ──────────────────────────────────────────────────────── -->
+        <div class="card hidden" id="resultsCard">
+            <div class="card-header">
+                <span class="card-title">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    Analysis Results
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="results-layout">
+
+                    <div class="result-thumb">
+                        <img id="resultThumb" src="" alt="Analyzed chest X-ray" />
+                        <p class="result-thumb-name" id="resultThumbName"></p>
+                    </div>
+
+                    <div>
+                        <div class="tab-nav" role="tablist" aria-label="Results view">
+                            <button class="tab-btn active" id="tab-cls" role="tab" aria-selected="true"
+                                aria-controls="panel-cls" onclick="switchTab('cls')">Classification</button>
+                            <button class="tab-btn" id="tab-rep" role="tab" aria-selected="false"
+                                aria-controls="panel-rep" onclick="switchTab('rep')">Generated Report</button>
+                            <button class="tab-btn hidden" id="tab-kgr" role="tab" aria-selected="false"
+                                aria-controls="panel-kgr" onclick="switchTab('kgr')">Study KG</button>
+                        </div>
+
+                        <!-- Classification -->
+                        <div class="tab-panel active" id="panel-cls" role="tabpanel" aria-labelledby="tab-cls">
+                            <div class="class-list" id="classList" aria-label="CheXpert classification probabilities"></div>
+                        </div>
+
+                        <!-- Report -->
+                        <div class="tab-panel" id="panel-rep" role="tabpanel" aria-labelledby="tab-rep">
+                            <textarea class="report-area" id="reportText" readonly aria-label="Generated radiology report"></textarea>
+                            <div class="copy-row">
+                                <button class="btn btn-secondary" id="copyBtn" onclick="copyReport()" aria-label="Copy generated report to clipboard">
+                                    <svg viewBox="0 0 24 24">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                    </svg>
+                                    Copy to clipboard
+                                </button>
+                            </div>
+                            <details class="raw-report">
+                                <summary>Show raw model output</summary>
+                                <pre id="reportRaw" class="raw-report-pre"></pre>
+                            </details>
+                        </div>
+
+                        <!-- Study KG (shown only when subject_id + study_id provided) -->
+                        <div class="tab-panel" id="panel-kgr" role="tabpanel" aria-labelledby="tab-kgr">
+                            <p class="hint-text" id="kgResultHint" style="margin-bottom:10px;">Loading study knowledge graph…</p>
+                            <div class="kg-graph-container hidden" id="kgResultGraph"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-footer">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    <span id="resultTiming"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Knowledge Graph Explorer ──────────────────────────────────────── -->
+        <div class="card">
+            <div class="card-header" id="kgHdr" role="button" tabindex="0" aria-expanded="true" aria-controls="kgBody"
+                onclick="toggleCard('kgBody','kgHdr')"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCard('kgBody','kgHdr');}">
+                <span class="card-title">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+                    </svg>
+                    Knowledge Graph Explorer
+                </span>
+                <svg class="chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+            </div>
+            <div class="card-body" id="kgBody">
+
+                <!-- Global stats strip -->
+                <div id="kgNoStats" class="info-note">
+                    Test the API connection above to load knowledge graph statistics.
+                </div>
+                <div id="kgStatsWrap" class="hidden">
+                    <p class="section-label">Global KG</p>
+                    <div class="kg-stats-grid" id="kgStatsGrid"></div>
+                </div>
+
+                <!-- Two-column explorer -->
+                <div class="kg-explorer-layout" style="margin-top:18px;">
+
+                    <!-- Sidebar -->
+                    <div class="kg-sidebar">
+
+                        <div>
+                            <p class="section-label">Concept Search</p>
+                            <div class="row-gap8">
+                                <input class="input" id="kgSearchInput" type="text"
+                                    placeholder="e.g. effusion, cardiomegaly, atelectasis"
+                                    aria-label="Search knowledge graph concepts"
+                                    onkeydown="if(event.key==='Enter') searchKgNodes();" />
+                                <button class="btn btn-secondary" onclick="searchKgNodes()" style="flex-shrink:0;" aria-label="Search">
+                                    <svg viewBox="0 0 24 24">
+                                        <circle cx="11" cy="11" r="8" />
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Search results table -->
+                        <div id="kgSearchResults" class="hidden">
+                            <p class="section-label" id="kgSearchResultsLabel"></p>
+                            <div style="overflow-x:auto;max-height:260px;overflow-y:auto;">
+                                <table class="kg-table">
+                                    <thead><tr><th>Concept</th><th>Type</th><th>Deg.</th></tr></thead>
+                                    <tbody id="kgSearchTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p class="section-label">Study Graph</p>
+                            <div class="field" style="margin-bottom:8px;">
+                                <label for="kgSubjectInput">Subject ID</label>
+                                <input class="input" id="kgSubjectInput" type="number" min="0" placeholder="10000032" />
+                            </div>
+                            <div class="field" style="margin-bottom:8px;">
+                                <label for="kgStudyInput">Study ID</label>
+                                <input class="input" id="kgStudyInput" type="number" min="0" placeholder="50414267" />
+                            </div>
+                            <button class="btn btn-primary" style="width:100%;" onclick="loadStudyGraph(0,0,'kgExplorerGraph','kgExplorerStatus',true)">
+                                Load Study Graph
+                            </button>
+                            <p class="hint-text" id="kgExplorerStatus" style="margin-top:6px;"></p>
+                        </div>
+
+                        <div>
+                            <button class="btn btn-secondary" style="width:100%;" onclick="loadGlobalGraph()">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3" />
+                                </svg>
+                                Show Global KG (top nodes)
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <!-- Graph panel -->
+                    <div>
+                        <p class="section-label" id="kgGraphLabel">Graph</p>
+                        <div class="kg-graph-container" id="kgExplorerGraph">
+                            <div class="kg-graph-placeholder">Search for a concept or load a study/global graph to visualize it here.</div>
+                        </div>
+                        <p class="hint-text" style="margin-top:6px;">Scroll to zoom · Drag nodes · Hover for details</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        "use strict";
+
+        // ── State ─────────────────────────────────────────────────────────────────
+        let _selectedFile    = null;
+        let _kgNetwork       = null;   // vis-network instance (explorer)
+        let _kgResultNetwork = null;   // vis-network instance (result KG tab)
+
+        // ── DOM ───────────────────────────────────────────────────────────────────
+        const fileInput   = document.getElementById("fileInput");
+        const dropZone    = document.getElementById("dropZone");
+        const analyzeBtn  = document.getElementById("analyzeBtn");
+        const analyzeHint = document.getElementById("analyzeHint");
+
+        // ── File selection ─────────────────────────────────────────────────────────
+        fileInput.addEventListener("change", () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+        dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+        dropZone.addEventListener("dragend",   () => dropZone.classList.remove("drag-over"));
+        dropZone.addEventListener("drop", e => {
+            e.preventDefault();
+            dropZone.classList.remove("drag-over");
+            const f = e.dataTransfer.files[0];
+            if (f) handleFile(f);
+        });
+
+        function handleFile(file) {
+            if (!new Set(["image/jpeg","image/png"]).has(file.type)) { showError("Only .jpg, .jpeg, and .png images are accepted."); return; }
+            if (file.size > 10 * 1024 * 1024) { showError("File too large — maximum 10 MB."); return; }
+
+            _selectedFile = file;
+            dismissError();
+
+            const reader = new FileReader();
+            reader.onload = e => { document.getElementById("previewImg").src = e.target.result; };
+            reader.readAsDataURL(file);
+
+            document.getElementById("previewName").textContent = file.name;
+            document.getElementById("previewSize").textContent = formatBytes(file.size);
+            document.getElementById("previewWrap").classList.add("visible");
+            analyzeBtn.disabled = false;
+            analyzeHint.textContent = file.name;
+        }
+
+        // ── Collapsible card ───────────────────────────────────────────────────────
+        function toggleCard(bodyId, headerId) {
+            const body   = document.getElementById(bodyId);
+            const header = document.getElementById(headerId);
+            const isOpen = !body.classList.contains("hidden");
+            body.classList.toggle("hidden", isOpen);
+            header.classList.toggle("collapsed", isOpen);
+            header.setAttribute("aria-expanded", isOpen ? "false" : "true");
+        }
+
+        // ── Connection test ────────────────────────────────────────────────────────
+        async function testConnection() {
+            const url = apiBase();
+            const btn = document.getElementById("testBtn");
+            btn.disabled = true;
+            setStatus("idle", "Testing…", "");
+            try {
+                const res  = await fetch(`${url}/health`, { signal: AbortSignal.timeout(8000) });
+                if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                const data = await res.json();
+                setStatus(
+                    "ok",
+                    data.model_loaded ? "Connected · Model loaded" : "Connected · Model not loaded",
+                    data.device ? `Device: ${data.device}` : ""
+                );
+                loadKgStatus(url);
+                startMetricsPolling();
+            } catch (err) {
+                setStatus("error", "Connection failed", err.name === "TimeoutError" ? "Request timed out" : err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function loadKgStatus(url) {
+            try {
+                const res  = await fetch(`${url}/kg/status`, { signal: AbortSignal.timeout(10000) });
+                if (!res.ok) return;
+                const data = await res.json();
+                const badge = document.getElementById("kgStatusBadge");
+                badge.classList.remove("hidden");
+                if (data.available) {
+                    badge.className = "badge badge-ok";
+                    document.getElementById("kgStatusLabel").textContent = "KG loaded";
+                    loadKgStats(url);
+                } else {
+                    badge.className = "badge badge-error";
+                    document.getElementById("kgStatusLabel").textContent = data.error ? `KG: ${data.error}` : "KG unavailable";
+                }
+            } catch { /* non-critical */ }
+        }
+
+        async function loadKgStats(url) {
+            try {
+                const res  = await fetch(`${url}/kg/stats`, { signal: AbortSignal.timeout(20000) });
+                if (!res.ok) return;
+                const data = await res.json();
+                renderKgStats(data);
+            } catch { /* ignore */ }
+        }
+
+        function renderKgStats(data) {
+            document.getElementById("kgNoStats").classList.add("hidden");
+            document.getElementById("kgStatsWrap").classList.remove("hidden");
+            const stats = [
+                { label: "Concept Nodes",    value: fmt(data.num_nodes) },
+                { label: "Unique Edges",     value: fmt(data.num_unique_edges) },
+                { label: "Edge Occurrences", value: fmt(data.num_raw_edges) },
+                { label: "Studies Indexed",  value: data.num_studies != null ? fmt(data.num_studies) : "N/A" },
+            ];
+            document.getElementById("kgStatsGrid").innerHTML = stats.map(s =>
+                `<div class="kg-stat-box">
+                   <div class="kg-stat-label">${escHtml(s.label)}</div>
+                   <div class="kg-stat-value">${escHtml(s.value)}</div>
+                 </div>`
+            ).join("");
+        }
+
+        function setStatus(type, label, meta) {
+            document.getElementById("statusBadge").className = `badge badge-${type}`;
+            document.getElementById("statusLabel").textContent = label;
+            document.getElementById("statusMeta").textContent  = meta;
+        }
+
+        // ── Analyze ────────────────────────────────────────────────────────────────
+        async function analyze() {
+            if (!_selectedFile) return;
+            const url        = apiBase();
+            const subjectId  = document.getElementById("subjectId").value.trim();
+            const studyId    = document.getElementById("studyId").value.trim();
+            const includeXai = document.getElementById("xaiCheck").checked;
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<div class="spinner"></div> Analyzing…';
+            dismissError();
+            document.getElementById("resultsCard").classList.add("hidden");
+            document.getElementById("tab-kgr").classList.add("hidden");
+
+            const form = new FormData();
+            form.append("image", _selectedFile);
+            if (subjectId) form.append("subject_id", subjectId);
+            if (studyId)   form.append("study_id",   studyId);
+            if (includeXai) form.append("save_explainability", "true");
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch(`${url}/predict`, { method: "POST", body: form, signal: AbortSignal.timeout(120_000) });
+
+                if (!res.ok) {
+                    let detail = `HTTP ${res.status}`;
+                    try { const eb = await res.json(); detail = eb.detail || eb.message || detail; } catch {}
+                    throw new Error(detail);
+                }
+
+                const data    = await res.json();
+                const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+                renderResults(data, elapsed);
+
+                // Auto-load study KG tab if both IDs were provided
+                if (subjectId && studyId) {
+                    document.getElementById("tab-kgr").classList.remove("hidden");
+                    document.getElementById("kgSubjectInput").value = subjectId;
+                    document.getElementById("kgStudyInput").value   = studyId;
+                    loadStudyGraph(parseInt(subjectId), parseInt(studyId), "kgResultGraph", "kgResultHint", false);
+                }
+
+            } catch (err) {
+                showError(err.name === "TimeoutError"
+                    ? "Request timed out after 2 minutes. The model may still be loading — try again."
+                    : `Analysis failed: ${err.message}`
+                );
+            } finally {
+                analyzeBtn.disabled = !_selectedFile;
+                analyzeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg> Analyze`;
+            }
+        }
+
+        // ── Clinical interpretation layer ────────────────────────────────────────────
+        // The classification head is heavily positive-saturated: raw sigmoid
+        // probabilities cluster near 1.0 and are NOT calibrated to 0.5. The thesis
+        // applies per-class decision thresholds tuned on the validation split. This
+        // layer turns the raw probabilities into a clear, demo-ready clinical reading:
+        //   1. apply each class's own threshold to get a binary decision
+        //   2. rank positives by *margin above threshold* (the saturation-robust signal)
+        //   3. apply the CheXpert "No Finding" exclusivity convention
+        //   4. emit a single Normal / Abnormal verdict with ranked findings
+        const NO_FINDING_LABEL = "No Finding";
+
+        function confidenceTier(margin) {
+            if (margin >= 0.45) return { key: "high",     label: "High" };
+            if (margin >= 0.18) return { key: "moderate", label: "Moderate" };
+            return { key: "low", label: "Borderline" };
+        }
+
+        function interpretClassification(classification, thresholds) {
+            const getThr = (c) => (thresholds && thresholds[c] !== undefined) ? Number(thresholds[c]) : 0.5;
+            const all = Object.entries(classification || {}).map(([label, prob]) => {
+                const p = Number(prob) || 0, thr = getThr(label);
+                return { label, prob: p, thr, positive: p >= thr, margin: p - thr };
+            });
+            const noFinding   = all.find(e => e.label === NO_FINDING_LABEL) || null;
+            const pathologies = all.filter(e => e.label !== NO_FINDING_LABEL);
+            const positives = pathologies.filter(e => e.positive).sort((a, b) => b.margin - a.margin);
+            const negatives = pathologies.filter(e => !e.positive).sort((a, b) => b.prob - a.prob);
+            const nfPositive = !!(noFinding && noFinding.positive);
+
+            let verdict, headline, detail;
+            if (positives.length === 0) {
+                verdict  = "normal";
+                headline = "No acute findings";
+                detail   = "No pathology exceeded its decision threshold — consistent with a normal / no-acute-finding study.";
+            } else {
+                verdict  = "abnormal";
+                const names = positives.slice(0, 3).map(e => e.label).join(", ");
+                headline = `${positives.length} finding${positives.length > 1 ? "s" : ""} detected`;
+                detail   = `Leading: ${names}${positives.length > 3 ? ` (+${positives.length - 3} more)` : ""}.`;
+            }
+            return { verdict, headline, detail, positives, negatives, noFinding, nfPositive, hasThresholds: !!(thresholds && Object.keys(thresholds).length) };
+        }
+
+        function findingRow(e, opts = {}) {
+            const pct    = Math.round(e.prob * 100);
+            const thrPct = Math.round(e.thr * 100);
+            const tier   = opts.positive ? confidenceTier(e.margin) : null;
+            const fill   = opts.positive ? `tier-${tier.key}` : "ok";
+            const badge  = opts.positive
+                ? `<span class="conf-badge conf-${tier.key}">${tier.label}</span>`
+                : "";
+            return `<div class="class-row">
+              <div class="class-row-header">
+                <span class="class-name">${escHtml(e.label)} ${badge}</span>
+                <span class="class-pct ${opts.positive ? "pct-danger" : "pct-ok"}">${pct}% <span style="opacity:.45;font-weight:400;">/ thr ${thrPct}%</span></span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill fill-${fill}" style="width:${pct}%"></div>
+                <div class="thr-marker" style="left:${thrPct}%" title="Decision threshold ${thrPct}%"></div>
+              </div>
+            </div>`;
+        }
+
+        // ── Report cleanup ───────────────────────────────────────────────────────────
+        // GPT-2 echoes MIMIC section boilerplate and stops mid-sentence at the token
+        // cap. This produces a readable IMPRESSION / FINDINGS view for the demo while
+        // the unmodified model output stays available via the "raw" toggle.
+        function cleanReport(raw) {
+            if (!raw || !raw.trim()) return { text: "(No report was returned.)", raw: raw || "" };
+            let t = raw.replace(/\s+/g, " ").trim();
+            // Drop MIMIC template tokens (incl. mashed variants like INDICATIONSIA / COMPARISONISONS).
+            t = t.replace(/\bFINAL REPORT\b/gi, " ");
+            t = t.replace(/\bEXAMINATION\b\s*:?/gi, " ");
+            t = t.replace(/\bTECHNIQUE\b[^.]*?(?=(IMPRESSION|FINDINGS|$))/gi, " ");
+            t = t.replace(/\bINDICATION\w*\b\s*:?/gi, " ");
+            t = t.replace(/\bCOMPARISON\w*\b\s*:?/gi, " ");
+            t = t.replace(/\bCLINICAL HISTORY\b\s*,?/gi, " ");
+            t = t.replace(/\bPERFORMED ON\b/gi, " ");
+            // Put the two clinical sections on their own lines.
+            t = t.replace(/\s*IMPRESSION\s*:?\s*/i, "\nIMPRESSION: ");
+            t = t.replace(/\s*FINDINGS\s*:?\s*/i, "\nFINDINGS: ");
+            // Strip stray enumerations after a header ("IMPRESSION: 1 2.") and orphan punctuation.
+            t = t.replace(/:(\s*\d+\b)+\s*\.?/g, ":");
+            t = t.replace(/\s+([.,;:])/g, "$1");
+            t = t.replace(/\.{2,}/g, ".");
+            t = t.replace(/[ \t]{2,}/g, " ");
+            t = t.replace(/\n[ \t]+/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+            // Flag a sentence the decoder left unfinished (no terminal punctuation).
+            if (t && !/[.!?]"?\s*$/.test(t)) t += " …";
+            return { text: t || "(No readable report.)", raw };
+        }
+
+        // ── Render results ─────────────────────────────────────────────────────────
+        function renderResults(data, elapsed) {
+            document.getElementById("resultThumb").src            = document.getElementById("previewImg").src;
+            document.getElementById("resultThumbName").textContent = _selectedFile.name;
+
+            const interp = interpretClassification(data.classification, data.thresholds || {});
+
+            const listEl = document.getElementById("classList");
+            if (!data.classification || Object.keys(data.classification).length === 0) {
+                listEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No classification data returned.</p>';
+            } else {
+                const banner = `<div class="verdict verdict-${interp.verdict}">
+                    <div class="verdict-icon">${interp.verdict === "normal" ? "✓" : "!"}</div>
+                    <div>
+                      <div class="verdict-headline">${interp.verdict === "normal" ? "NORMAL" : "ABNORMAL"} — ${escHtml(interp.headline)}</div>
+                      <div class="verdict-detail">${escHtml(interp.detail)}</div>
+                    </div>
+                  </div>`;
+
+                const conflictNote = (interp.verdict === "abnormal" && interp.nfPositive)
+                    ? `<p class="interp-note">⚠ "No Finding" also crossed its threshold (prob ${Math.round(interp.noFinding.prob * 100)}%). This is model saturation, not a true normal read — the detected pathologies above take precedence under the CheXpert "No Finding" exclusivity rule.</p>`
+                    : "";
+
+                const posSection = interp.positives.length
+                    ? `<div class="finding-group">
+                         <div class="finding-group-title pos">Positive findings · ${interp.positives.length}</div>
+                         ${interp.positives.map(e => findingRow(e, { positive: true })).join("")}
+                       </div>`
+                    : `<div class="finding-group"><div class="finding-group-title none">No positive pathologies</div></div>`;
+
+                const negSection = interp.negatives.length
+                    ? `<details class="finding-group neg-details">
+                         <summary class="finding-group-title neg">Not detected · ${interp.negatives.length} <span class="chev">▸</span></summary>
+                         ${interp.negatives.map(e => findingRow(e, { positive: false })).join("")}
+                       </details>`
+                    : "";
+
+                listEl.innerHTML = banner + conflictNote + posSection + negSection;
+            }
+
+            const cleaned = cleanReport(data.generated_report || "");
+            document.getElementById("reportText").value = cleaned.text;
+            const rawEl = document.getElementById("reportRaw");
+            if (rawEl) rawEl.textContent = (cleaned.raw || "").trim() || "(empty)";
+
+            document.getElementById("resultTiming").textContent = data.processing_time_ms !== undefined
+                ? `Analyzed in ${(data.processing_time_ms / 1000).toFixed(1)}s (client: ${elapsed}s)`
+                : `Analyzed in ${elapsed}s`;
+
+            showInferenceResources(data.resources || null, data.processing_time_ms);
+
+            const card = document.getElementById("resultsCard");
+            card.classList.remove("hidden");
+            switchTab("cls");
+            requestAnimationFrame(() => { card.scrollIntoView({ behavior: "smooth", block: "start" }); document.getElementById("tab-cls").focus(); });
+        }
+
+        // ── Tabs ───────────────────────────────────────────────────────────────────
+        const RESULT_TABS = ["cls", "rep", "kgr"];
+
+        function switchTab(id) {
+            RESULT_TABS.forEach(t => {
+                const btn   = document.getElementById(`tab-${t}`);
+                const panel = document.getElementById(`panel-${t}`);
+                if (!btn || !panel) return;
+                const active = t === id;
+                btn.classList.toggle("active", active);
+                btn.setAttribute("aria-selected", String(active));
+                panel.classList.toggle("active", active);
+            });
+        }
+
+        // ── Copy report ────────────────────────────────────────────────────────────
+        async function copyReport() {
+            const text = document.getElementById("reportText").value;
+            const btn  = document.getElementById("copyBtn");
+            try {
+                await navigator.clipboard.writeText(text);
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg> Copied!`;
+                btn.disabled = true;
+                setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+            } catch {
+                showError("Clipboard access denied — select and copy the report text manually.");
+            }
+        }
+
+        // ── vis-network options ────────────────────────────────────────────────────
+        const VIS_OPTIONS = {
+            nodes: {
+                shape: "dot",
+                size: 16,
+                font: { size: 13, face: "Helvetica, Arial, sans-serif", color: "#1e293b" },
+                borderWidth: 2,
+                borderWidthSelected: 3,
+                shadow: { enabled: true, size: 4, x: 0, y: 1, color: "rgba(0,0,0,0.12)" },
+            },
+            edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.55 } },
+                smooth: { enabled: true, type: "continuous", roundness: 0.4 },
+                font: { size: 10, align: "middle", color: "#64748b", strokeWidth: 3, strokeColor: "#ffffff" },
+                color: { opacity: 0.75, inherit: false },
+                width: 1.5,
+            },
+            physics: {
+                enabled: true,
+                solver: "forceAtlas2Based",
+                stabilization: { enabled: true, iterations: 250, updateInterval: 25, fit: true },
+                forceAtlas2Based: {
+                    gravitationalConstant: -55,
+                    centralGravity: 0.012,
+                    springLength: 130,
+                    springConstant: 0.09,
+                    damping: 0.5,
+                    avoidOverlap: 0.6,
+                },
+                minVelocity: 0.6,
+            },
+            layout: { improvedLayout: true },
+            interaction: { hover: true, zoomView: true, dragNodes: true, tooltipDelay: 120, navigationButtons: false },
+        };
+
+        function renderGraph(containerId, graphData, existingNetwork) {
+            const container = document.getElementById(containerId);
+            if (!container) return null;
+
+            // Tear down any prior network bound to this container so canvases
+            // don't stack and leak (a frequent cause of a "frozen/blank" graph).
+            if (existingNetwork && typeof existingNetwork.destroy === "function") {
+                try { existingNetwork.destroy(); } catch (_) { /* noop */ }
+            }
+            container.innerHTML = "";
+            container.classList.remove("hidden");
+
+            if (typeof vis === "undefined") {
+                container.innerHTML = `<div class="kg-graph-placeholder">
+                  Graph library failed to load (offline and no vendored copy found).<br>
+                  Graph data is valid: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges.
+                </div>`;
+                return null;
+            }
+            if (!graphData.nodes || graphData.nodes.length === 0) {
+                container.innerHTML = `<div class="kg-graph-placeholder">No graph nodes returned for this study.</div>`;
+                return null;
+            }
+
+            const dataset = { nodes: new vis.DataSet(graphData.nodes), edges: new vis.DataSet(graphData.edges) };
+            const network = new vis.Network(container, dataset, VIS_OPTIONS);
+
+            // Once the layout settles: fit everything into view, then freeze
+            // physics so the graph stays still and readable for the demo.
+            network.once("stabilizationIterationsDone", () => {
+                network.fit({ animation: { duration: 350, easingFunction: "easeInOutQuad" } });
+                network.setOptions({ physics: { enabled: false } });
+            });
+            return network;
+        }
+
+        // ── Load global graph ──────────────────────────────────────────────────────
+        async function loadGlobalGraph() {
+            const url = apiBase();
+            document.getElementById("kgGraphLabel").textContent = "Global KG (top nodes by degree)";
+            const container = document.getElementById("kgExplorerGraph");
+            container.innerHTML = '<div class="kg-graph-placeholder">Loading global graph…</div>';
+            container.classList.remove("hidden");
+            try {
+                const res = await fetch(`${url}/kg/graph/global?max_nodes=80&max_edges=200`, { signal: AbortSignal.timeout(30000) });
+                if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+                const data = await res.json();
+                _kgNetwork = renderGraph("kgExplorerGraph", data, _kgNetwork);
+                document.getElementById("kgGraphLabel").textContent =
+                    `Global KG — ${data.nodes.length} nodes, ${data.edges.length} edges shown`;
+            } catch (err) {
+                container.innerHTML = `<div class="kg-graph-placeholder">${escHtml(err.message)}</div>`;
+            }
+        }
+
+        // ── Load study graph ───────────────────────────────────────────────────────
+        async function loadStudyGraph(subjectId, studyId, graphContainerId, statusId, useInputs) {
+            const url = apiBase();
+            if (useInputs) {
+                subjectId = parseInt(document.getElementById("kgSubjectInput").value) || 0;
+                studyId   = parseInt(document.getElementById("kgStudyInput").value)   || 0;
+            }
+            if (!subjectId || !studyId) { document.getElementById(statusId).textContent = "Enter both Subject ID and Study ID."; return; }
+
+            const studyKey  = `${subjectId}_${studyId}`;
+            const statusEl  = document.getElementById(statusId);
+            const container = document.getElementById(graphContainerId);
+
+            statusEl.textContent = `Loading study graph ${studyKey}… (first extraction may take ~10 s)`;
+            if (graphContainerId === "kgExplorerGraph") {
+                container.innerHTML = `<div class="kg-graph-placeholder">Extracting study graph ${studyKey}…<br>First call reads from the 17 GB archive — please wait.</div>`;
+                container.classList.remove("hidden");
+                document.getElementById("kgGraphLabel").textContent = `Study Graph: ${studyKey}`;
+            }
+
+            try {
+                const res = await fetch(`${url}/kg/study/${subjectId}/${studyId}`, { signal: AbortSignal.timeout(120_000) });
+                if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+                const data = await res.json();
+
+                if (graphContainerId === "kgExplorerGraph") {
+                    _kgNetwork = renderGraph(graphContainerId, data, _kgNetwork);
+                    document.getElementById("kgGraphLabel").textContent =
+                        `Study ${studyKey} — ${data.nodes.length} nodes, ${data.edges.length} edges`;
+                } else {
+                    const hint = document.getElementById(statusId);
+                    if (hint) hint.classList.add("hidden");
+                    _kgResultNetwork = renderGraph(graphContainerId, data, _kgResultNetwork);
+                }
+                statusEl.textContent = `Study ${studyKey}: ${data.num_nodes} concept nodes, ${data.num_unique_edges} unique edges.`;
+            } catch (err) {
+                statusEl.textContent = `Failed: ${err.message}`;
+                if (graphContainerId === "kgExplorerGraph") {
+                    container.innerHTML = `<div class="kg-graph-placeholder">${escHtml(err.message)}</div>`;
+                }
+            }
+        }
+
+        // ── Search KG nodes ────────────────────────────────────────────────────────
+        async function searchKgNodes() {
+            const url   = apiBase();
+            const query = document.getElementById("kgSearchInput").value.trim();
+            if (!query) return;
+
+            const resultsEl = document.getElementById("kgSearchResults");
+            const tbodyEl   = document.getElementById("kgSearchTbody");
+            const labelEl   = document.getElementById("kgSearchResultsLabel");
+
+            tbodyEl.innerHTML = "<tr><td colspan='3'>Searching…</td></tr>";
+            labelEl.textContent = `Searching "${query}"…`;
+            resultsEl.classList.remove("hidden");
+
+            try {
+                const res  = await fetch(`${url}/kg/nodes?q=${encodeURIComponent(query)}&limit=50`, { signal: AbortSignal.timeout(45000) });
+                if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+                const data = await res.json();
+                labelEl.textContent = `"${query}" — ${data.total_matched} match${data.total_matched === 1 ? "" : "es"}`;
+
+                tbodyEl.innerHTML = data.nodes.length === 0
+                    ? "<tr><td colspan='3'>No matches.</td></tr>"
+                    : data.nodes.map(n => {
+                        const tc = `kg-node-type-${(n.node_type || "unknown").toLowerCase()}`;
+                        return `<tr>
+                          <td><strong>${escHtml(n.text)}</strong>${n.cui ? `<br><span style="font-size:10px;color:var(--text-muted);">${escHtml(n.cui)}</span>` : ""}</td>
+                          <td><span class="kg-node-type ${tc}">${escHtml(n.node_type)}</span></td>
+                          <td>${n.degree}</td>
+                        </tr>`;
+                    }).join("");
+            } catch (err) {
+                const msg = err.name === "TimeoutError" ? "Search timed out — try a more specific term." : err.message;
+                labelEl.textContent = `"${query}" — search failed`;
+                tbodyEl.innerHTML = `<tr><td colspan='3'>${escHtml(msg)}</td></tr>`;
+            }
+        }
+
+        // ── Resource usage polling ─────────────────────────────────────────────────
+        let _metricsInterval = null;
+
+        function startMetricsPolling() {
+            stopMetricsPolling();
+            fetchMetrics();
+            _metricsInterval = setInterval(fetchMetrics, 2000);
+        }
+
+        function stopMetricsPolling() {
+            if (_metricsInterval !== null) { clearInterval(_metricsInterval); _metricsInterval = null; }
+        }
+
+        async function fetchMetrics() {
+            try {
+                const res = await fetch(`${apiBase()}/metrics`, { signal: AbortSignal.timeout(4000) });
+                if (!res.ok) return;
+                updateResourceGauges(await res.json());
+            } catch { /* non-critical */ }
+        }
+
+        function updateResourceGauges(data) {
+            document.getElementById("resNotConnected").classList.add("hidden");
+            document.getElementById("resGauges").classList.remove("hidden");
+
+            const hasGpu = data.gpu_name !== undefined;
+            document.getElementById("resGpuSection").classList.toggle("hidden", !hasGpu);
+            if (hasGpu) {
+                document.getElementById("resGpuName").textContent = `GPU · ${data.gpu_name || ""}`;
+                if (data.gpu_mem_total_mb && data.gpu_mem_allocated_mb !== undefined) {
+                    const pct = Math.round((data.gpu_mem_allocated_mb / data.gpu_mem_total_mb) * 100);
+                    document.getElementById("resGpuMemBar").style.width = `${pct}%`;
+                    document.getElementById("resGpuMemText").textContent =
+                        `${data.gpu_mem_allocated_mb.toFixed(0)} / ${data.gpu_mem_total_mb.toFixed(0)} MB`;
+                }
+                const utilRow = document.getElementById("resGpuUtilRow");
+                if (data.gpu_util_pct !== undefined) {
+                    utilRow.classList.remove("hidden");
+                    document.getElementById("resGpuUtilBar").style.width = `${data.gpu_util_pct}%`;
+                    document.getElementById("resGpuUtilText").textContent = `${data.gpu_util_pct}%`;
+                } else {
+                    utilRow.classList.add("hidden");
+                }
+            }
+
+            if (data.cpu_percent !== undefined) {
+                document.getElementById("resCpuBar").style.width = `${Math.min(data.cpu_percent, 100)}%`;
+                document.getElementById("resCpuText").textContent = `${data.cpu_percent.toFixed(0)}%`;
+            }
+            if (data.ram_used_mb !== undefined && data.ram_total_mb !== undefined) {
+                const pct = Math.round((data.ram_used_mb / data.ram_total_mb) * 100);
+                document.getElementById("resRamBar").style.width = `${pct}%`;
+                document.getElementById("resRamText").textContent =
+                    `${(data.ram_used_mb / 1024).toFixed(1)} / ${(data.ram_total_mb / 1024).toFixed(1)} GB`;
+            }
+            if (data.process_rss_mb !== undefined) {
+                document.getElementById("resRssText").textContent = `${data.process_rss_mb.toFixed(0)} MB`;
+            }
+        }
+
+        function showInferenceResources(resources, latencyMs) {
+            const el  = document.getElementById("resInference");
+            const txt = document.getElementById("resInferenceText");
+            const parts = [];
+            if (resources) {
+                if (resources.peak_gpu_mem_mb !== undefined)
+                    parts.push(`Peak VRAM: <strong>${resources.peak_gpu_mem_mb.toFixed(0)} MB</strong>`);
+                if (resources.rss_delta_mb !== undefined)
+                    parts.push(`RSS Δ: ${resources.rss_delta_mb >= 0 ? "+" : ""}${resources.rss_delta_mb.toFixed(1)} MB`);
+                if (resources.device)
+                    parts.push(`Device: ${escHtml(resources.device)}`);
+            }
+            if (latencyMs !== undefined)
+                parts.push(`Latency: <strong>${(latencyMs / 1000).toFixed(1)} s</strong>`);
+            txt.innerHTML = parts.join(" &nbsp;·&nbsp; ");
+            el.classList.remove("hidden");
+        }
+
+        // ── Utilities ──────────────────────────────────────────────────────────────
+        function showError(msg) { document.getElementById("errMsg").textContent = msg; document.getElementById("errBanner").classList.remove("hidden"); }
+        function dismissError() { document.getElementById("errBanner").classList.add("hidden"); }
+        function apiBase()      { return document.getElementById("apiUrl").value.replace(/\/+$/, ""); }
+
+        function fmt(n)        { return n == null ? "N/A" : Number(n).toLocaleString(); }
+        function formatBytes(b){ return b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`; }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+        }
+    </script>
+
+</body>
+</html>

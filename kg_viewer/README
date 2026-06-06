@@ -1,6 +1,11 @@
 # Knowledge Graph Viewer
 
-This viewer is a standalone app for exploring Phase I knowledge graph outputs.
+This viewer is a standalone Streamlit app for exploring Phase I knowledge graph
+outputs. The same functionality is **also available without Streamlit** via the
+FastAPI backend REST routes in `backend/kg_api.py` (mounted under `/kg/*`).
+Use the Streamlit app for interactive local exploration; use the API routes for
+programmatic access or when serving the web demo on the Hydra GPU node (see
+`documents/WEBAPP_RUNBOOK.md`).
 
 It supports both of these workflows:
 

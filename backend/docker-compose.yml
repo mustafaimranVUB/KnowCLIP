@@ -1,0 +1,36 @@
+# docker compose -f backend/docker-compose.yml up
+#
+# GPU deployment. Host needs NVIDIA driver + nvidia-container-toolkit.
+# Set the two host paths via env before running:
+#   CKPT=/abs/path/best_model.pt KG_DIR=/abs/path/outputs/KG \
+#     docker compose -f backend/docker-compose.yml up
+#
+# KG_DIR is optional — if you do not have the KG artifacts, set KG_DIR to any existing
+# empty dir (or remove the second volume + KG_ARTIFACTS_DIR); /predict still works.
+services:
+  knoclip-api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: knoclip-api:gpu
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_CONFIG: "configs/hydra_phase2_neurosymbolic_gpt2_jpg_impression_clinical_v1.yaml"
+      MODEL_CHECKPOINT: "/models/best_model.pt"
+      KG_ARTIFACTS_DIR: "/kg"
+      DEVICE: "cuda:0"
+    volumes:
+      - "${CKPT:?set CKPT=/abs/path/best_model.pt}:/models/best_model.pt:ro"
+      - "${KG_DIR:-/tmp}:/kg:ro"
+      # Persist the Hugging Face cache so the backbone is downloaded only once.
+      - "${HF_CACHE:-hf_cache}:/root/.cache/huggingface"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+volumes:
+  hf_cache:

@@ -13,6 +13,10 @@ venv/
 # IDEs
 .vscode/
 .github/agents/
+CLAUDE.md
+HANDOVER.md
+.claude/
+path.txt
 
 
 

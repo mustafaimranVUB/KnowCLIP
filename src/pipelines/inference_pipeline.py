@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 from src.core.config import ProjectConfig, load_config
 from src.data.dataset import _get_report_tokenizer
@@ -33,6 +36,29 @@ class InferencePipeline:
         self.config = self.training_pipeline.config
         self.device = self.training_pipeline.device
 
+        # Cache the built + checkpoint-loaded model so repeated run() calls
+        # (e.g. a long-lived REST server) do not rebuild BioMedCLIP/GATv2/GPT-2
+        # and re-read the checkpoint from disk on every request. The one-shot
+        # CLI path still builds exactly once.
+        self._model: Any = None
+        self._prepared_checkpoint: Optional[str] = None
+
+    def _prepare_model(self, checkpoint_path: str | Path) -> Any:
+        """Build and checkpoint-load the model once, reusing it on later calls."""
+        checkpoint_key = str(Path(checkpoint_path))
+        if self._model is not None and self._prepared_checkpoint == checkpoint_key:
+            return self._model
+
+        self.training_pipeline.setup()
+        model = self.training_pipeline.build_model()
+        self.training_pipeline.load_checkpoint(checkpoint_path)
+        model = model.to(self.device)
+        model.eval()
+
+        self._model = model
+        self._prepared_checkpoint = checkpoint_key
+        return model
+
     def run(
         self,
         checkpoint_path: str | Path,
@@ -43,11 +69,7 @@ class InferencePipeline:
         output_dir: Optional[str | Path] = None,
         save_explainability: bool = False,
     ) -> Dict[str, Any]:
-        self.training_pipeline.setup()
-        model = self.training_pipeline.build_model()
-        self.training_pipeline.load_checkpoint(checkpoint_path)
-        model = model.to(self.device)
-        model.eval()
+        model = self._prepare_model(checkpoint_path)
 
         pixel_values = self._load_image_tensor(image_path)
         graph_payload = self._load_graph_payload(subject_id, study_id)
@@ -167,7 +189,16 @@ class InferencePipeline:
         if not report_graphs_path.exists():
             return payload
 
-        graphs = torch.load(report_graphs_path, map_location="cpu", weights_only=False)
+        try:
+            graphs = torch.load(report_graphs_path, map_location="cpu", weights_only=False)
+        except Exception as exc:  # noqa: BLE001 — corrupt/partial artifact must not break predict
+            logger.warning(
+                "Could not load KG artifact %s (%s); continuing without graph context.",
+                report_graphs_path,
+                exc,
+            )
+            return payload
+
         study_key = f"{subject_id}_{study_id}"
         graph = graphs.get(study_key)
         if graph is None:

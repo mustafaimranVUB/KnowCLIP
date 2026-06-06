@@ -147,6 +147,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional cap on report-generation evaluation samples (classification still runs on the full test set).",
     )
+    ev.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["val", "validate", "test"],
+        help="Dataset split to evaluate on. Use 'val' for validation-based model selection; 'test' for final one-shot reporting (default: test).",
+    )
 
     # ---- explain ----
     ex = sub.add_parser("explain", help="Export sample-level explainability artefacts.", parents=[sub_common])
@@ -253,18 +260,30 @@ def cmd_train(config: ProjectConfig, args: argparse.Namespace) -> None:
 
 
 def cmd_evaluate(config: ProjectConfig, args: argparse.Namespace) -> None:
-    """Evaluate a trained model on the test set."""
+    """Evaluate a trained model on the val or test set."""
     from src.pipelines.training_pipeline import TrainingPipeline
 
     pipeline = TrainingPipeline(config=config, device=args.device)
     pipeline.setup()
 
     val_loader, test_loader = pipeline.build_eval_dataloaders(batch_size=args.batch_size)
+
+    split = getattr(args, "split", "test")
+    if split in ("val", "validate"):
+        # Validation-based model selection: evaluate on val, no threshold leak
+        eval_loader = val_loader
+        threshold_loader = None  # no val→val leakage for threshold tuning
+        logger.info("Evaluating on VALIDATION split (for model selection only — do not report as final results).")
+    else:
+        eval_loader = test_loader
+        threshold_loader = val_loader  # thresholds tuned on val, applied to test
+        logger.info("Evaluating on TEST split.")
+
     results = pipeline.evaluate(
-        test_loader,
+        eval_loader,
         checkpoint_path=args.checkpoint,
         artifact_dir=args.output_dir,
-        threshold_loader=val_loader,
+        threshold_loader=threshold_loader,
         generation_max_samples=getattr(args, "generation_max_samples", None),
     )
     logger.info("Evaluation results:\n%s", results)

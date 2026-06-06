@@ -1,0 +1,39 @@
+# requirements-serve.txt — serve-only dependencies for the web app (GPU deployment).
+#
+# This is a SUBSET of the project's root requirements.txt, containing only what the
+# /predict + KG-viewer serve path actually imports. Phase-I / training-only deps
+# (radgraph, scispacy, datasets, bert-score, nltk, etc.) are intentionally excluded —
+# they are never imported when serving (verified: all heavy NLP imports are lazy and
+# live under src/knowledge/, which the inference path does not touch).
+#
+# torch / torchvision are NOT listed here on purpose — they are provided by:
+#   - the CUDA base image in backend/Dockerfile, or
+#   - an explicit `pip install torch==2.5.1 torchvision==0.20.1` (CUDA build from the
+#     default PyPI index) in backend/run_local.sh.
+# Installing them separately keeps the CUDA build authoritative and avoids accidental
+# CPU-wheel resolution. torch must already be importable before installing this file.
+
+# Graph stack (pure-python; binds to the already-installed CUDA torch)
+torch-geometric==2.6.0
+
+# Transformers + CLIP backbone (pinned: same tokenizer/decoder behavior as training)
+transformers==4.57.3
+huggingface-hub>=0.34.0,<1.0
+open-clip-torch>=2.24.0
+
+# Image / data handling used by the inference + KG-viewer path
+Pillow>=10.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-image>=0.21.0
+pydicom>=2.4.0
+
+# matplotlib is imported at module load by src/evaluation/explainability.py
+# (which the inference pipeline imports at the top level), so it is required even
+# when save_explainability is False. Used headless (Agg) — no display needed.
+matplotlib>=3.7.0
+
+# API server
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9

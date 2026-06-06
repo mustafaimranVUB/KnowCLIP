@@ -1,0 +1,23 @@
+# Keep the build context (repo root) small — exclude everything the image does not need.
+**/__pycache__/
+**/*.pyc
+.git/
+.github/
+.venv/
+envs/
+.conda/
+.pytest_cache/
+documents/
+notebooks/
+research/
+tests/
+outputs/
+data/
+logs/
+mlruns/
+hf_cache/
+torch_cache/
+pip_cache/
+.cache/
+*.egg-info/
+.DS_Store
