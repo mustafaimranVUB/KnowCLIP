@@ -368,14 +368,18 @@ export KG_ARTIFACTS_DIR=outputs/KG          # only for neuro-symbolic configs
 bash backend/start.sh
 ```
 
-The server starts at `http://0.0.0.0:8000` by default.
+The server starts at `http://0.0.0.0:8000` by default. The model is pre-loaded eagerly at startup so the first `/predict` is not delayed. The frontend is served directly from FastAPI at `http://localhost:8000/`.
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/health` | GET | Liveness probe — returns model_loaded + device |
-| `/predict` | POST | Upload a JPG/PNG and get classification + report |
+| `/predict` | POST | Upload a JPG/PNG; returns classification, report, explainability URLs |
 | `/classes` | GET | List the 14 CheXpert class names |
 | `/config` | GET | Non-sensitive model configuration info |
+| `/explainability/*` | GET | Static file server for inference PNG outputs (no-cache) |
+| `/kg/trace/{study_key}` | GET | Trace bundle data as JSON — token labels, concept attention, GATv2 top edges |
+| `/kg/report-subgraph` | POST | Extract KG concept subgraph from report text + classification labels |
+| `/kg/studies` | GET | Search the 227k MIMIC-CXR study catalog by subject/study ID |
 
 Full API documentation is auto-generated at `http://localhost:8000/docs` (Swagger UI).
 
@@ -386,24 +390,29 @@ pip install -r backend/requirements.txt
 
 ### Frontend
 
-No installation required — open the HTML file in any modern browser:
-
-```bash
-# Option 1 — open directly
-xdg-open frontend/index.html   # Linux
-open frontend/index.html       # macOS
-
-# Option 2 — serve (optional, avoids any browser CORS quirks)
-python -m http.server 3000 --directory frontend
-# then open http://localhost:3000
-```
+The UI is served by the FastAPI backend — just open `http://localhost:8000/` after starting the server.
 
 The UI lets you:
 - Configure the backend API URL (defaults to `http://localhost:8000`)
 - Test the connection with a single click
 - Drag-and-drop or browse for a chest X-ray (JPG/PNG)
+- Optionally enter a MIMIC-CXR **Subject ID** and **Study ID** to activate the full neuro-symbolic path (GATv2 graph attention on the per-study KG); without IDs the model falls back to the global KG automatically
 - Run analysis and see classification probabilities + the generated report
-- Optionally request explainability artefacts
+- **Explanations tab** — rendered when `Save Explainability` is checked:
+  - Per-concept inherent Cam_k heatmaps (cross-attention from the fusion layer, not post-hoc gradients)
+  - Analysis plots: cross-attention overlays, classification scores, concept importance, GATv2 attention, decoder visual overlays
+  - **Trace bundle viewer** — top KG concepts by pooling weight, decoder token → concept attention heatmap, top GATv2 edges table (loaded async from `/kg/trace/{study_key}`)
+- **Study browser** — search the 227,835-study MIMIC-CXR KG catalog directly in the UI to find and auto-fill valid subject/study ID pairs
+
+#### Getting MIMIC-CXR test images
+
+To test the full neuro-symbolic path locally, download frontal chest X-rays from PhysioNet with matching KG study IDs:
+
+```bash
+python test_images/fetch_mimic.py --user YOUR_PHYSIONET_USER --password YOUR_PHYSIONET_PASS
+```
+
+This downloads 10 frontal views (PA/AP) for studies already present in `outputs/KG/report_graphs.pt`. Upload each image via the web UI and enter the matching subject_id and study_id (encoded in the filename: `mimic_{subject_id}_{study_id}.jpg`) to get GATv2 attention weights and the full 4-layer XAI output.
 
 ---
 
@@ -590,6 +599,8 @@ These are the authoritative references for the current codebase. Older methodolo
 | Missing UMLS files | Place 2025AB files under `data/umls-2025AB-metathesaurus-full/2025AB/META/` or the configured Hydra path |
 | Missing optional generation metrics | `METEOR` needs NLTK `wordnet`; `BERTScore` needs `bert_score`; `CIDEr` needs `aac_metrics` |
 | Hydra launcher mismatch | Use the maintained `scripts/hydra/*.sh` files; they are regression-tested by `tests/test_hydra_scripts.py` |
+| `PosixPath` error loading checkpoint on Windows | Training pipeline patches `PosixPath → WindowsPath` automatically; no manual fix needed |
+| Slow first `/predict` request | Model now pre-loads at startup — first request should be fast after the server reports `API ready` |
 
 ---
 

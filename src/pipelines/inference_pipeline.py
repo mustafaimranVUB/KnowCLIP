@@ -42,6 +42,9 @@ class InferencePipeline:
         # CLI path still builds exactly once.
         self._model: Any = None
         self._prepared_checkpoint: Optional[str] = None
+        # Cache for report_graphs.pt (17 GB) — loaded at most once per process.
+        self._report_graphs: Optional[Dict[str, Any]] = None
+        self._report_graphs_loaded: bool = False
 
     def _prepare_model(self, checkpoint_path: str | Path) -> Any:
         """Build and checkpoint-load the model once, reusing it on later calls."""
@@ -180,31 +183,8 @@ class InferencePipeline:
         transform = get_eval_transforms(image_size=self.config.model.visual_encoder.image_size)
         return transform(image).unsqueeze(0).to(self.device)
 
-    def _load_graph_payload(self, subject_id: Optional[int], study_id: Optional[int]) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
-        if subject_id is None or study_id is None:
-            return payload
-
-        report_graphs_path = Path(self.config.data.kg_artifacts_dir) / "report_graphs.pt"
-        if not report_graphs_path.exists():
-            return payload
-
-        try:
-            graphs = torch.load(report_graphs_path, map_location="cpu", weights_only=False)
-        except Exception as exc:  # noqa: BLE001 — corrupt/partial artifact must not break predict
-            logger.warning(
-                "Could not load KG artifact %s (%s); continuing without graph context.",
-                report_graphs_path,
-                exc,
-            )
-            return payload
-
-        study_key = f"{subject_id}_{study_id}"
-        graph = graphs.get(study_key)
-        if graph is None:
-            return payload
-
-        payload.update({
+    def _graph_data_to_payload(self, graph: Any) -> Dict[str, Any]:
+        return {
             "graph_x": graph.x.to(self.device),
             "graph_edge_index": graph.edge_index.to(self.device),
             "graph_edge_type": graph.edge_type.to(self.device),
@@ -213,5 +193,52 @@ class InferencePipeline:
             "graph_node_cuis": list(getattr(graph, "node_cuis", [])),
             "graph_node_types": list(getattr(graph, "node_types", [])),
             "graph_node_certainties": list(getattr(graph, "node_certainties", [])),
-        })
-        return payload
+        }
+
+    def _load_global_graph_payload(self) -> Dict[str, Any]:
+        if not self.config.model.use_kg:
+            return {}
+        global_kg_path = Path(self.config.data.kg_artifacts_dir) / "global_kg.pt"
+        if not global_kg_path.exists():
+            logger.warning("Global KG not found at %s; continuing without graph context.", global_kg_path)
+            return {}
+        try:
+            graph = torch.load(global_kg_path, map_location="cpu", weights_only=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not load global KG (%s); continuing without graph context.", exc)
+            return {}
+        logger.info("Using global KG (%d nodes) for inference.", graph.x.shape[0])
+        return self._graph_data_to_payload(graph)
+
+    def _load_graph_payload(self, subject_id: Optional[int], study_id: Optional[int]) -> Dict[str, Any]:
+        if subject_id is None or study_id is None:
+            return self._load_global_graph_payload()
+
+        report_graphs_path = Path(self.config.data.kg_artifacts_dir) / "report_graphs.pt"
+        if not report_graphs_path.exists():
+            return self._load_global_graph_payload()
+
+        if not self._report_graphs_loaded:
+            try:
+                logger.info("Loading report_graphs.pt (first time, may take a while)...")
+                self._report_graphs = torch.load(report_graphs_path, map_location="cpu", weights_only=False)
+                logger.info("report_graphs.pt cached (%d studies).", len(self._report_graphs or {}))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Could not load KG artifact %s (%s); falling back to global KG.",
+                    report_graphs_path,
+                    exc,
+                )
+            finally:
+                self._report_graphs_loaded = True  # don't retry on failure
+
+        if not self._report_graphs:
+            return self._load_global_graph_payload()
+
+        study_key = f"{subject_id}_{study_id}"
+        graph = self._report_graphs.get(study_key)
+        if graph is None:
+            logger.info("Study %s not in report_graphs.pt; falling back to global KG.", study_key)
+            return self._load_global_graph_payload()
+
+        return self._graph_data_to_payload(graph)

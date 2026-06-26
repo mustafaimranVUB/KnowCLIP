@@ -592,6 +592,16 @@ class TrainingPipeline:
         assert self._model is not None
 
         checkpoint_path = Path(checkpoint_path)
+
+        # Checkpoints saved on Linux contain PosixPath objects that cannot be
+        # unpickled on Windows.  Temporarily remap PosixPath → WindowsPath so
+        # torch.load succeeds; the tensors/state_dict are unaffected.
+        import platform as _platform
+        import pathlib as _pathlib
+        _posix_patch = _platform.system() == "Windows"
+        _orig_posix_path = getattr(_pathlib, "PosixPath", None)
+        if _posix_patch:
+            _pathlib.PosixPath = _pathlib.WindowsPath  # type: ignore[attr-defined]
         try:
             ckpt = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
             self._model.load_state_dict(ckpt["model_state_dict"])
@@ -620,6 +630,9 @@ class TrainingPipeline:
             raise RuntimeError(
                 f"Checkpoint {checkpoint_path} is corrupt and no valid periodic checkpoints found in {ckpt_dir}"
             ) from exc
+        finally:
+            if _posix_patch and _orig_posix_path is not None:
+                _pathlib.PosixPath = _orig_posix_path  # type: ignore[attr-defined]
 
     def _evaluate_generation(
         self,

@@ -632,6 +632,18 @@
         /* ─── Info note ─────────────────────────────────────────────────────────── */
         .info-note { font-size: 12px; color: var(--text-muted); padding: 8px 12px; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
 
+        /* ─── Concept CAM grid ──────────────────────────────────────────────────── */
+        .xai-section-title { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin: 18px 0 8px; }
+        .xai-section-title:first-child { margin-top: 0; }
+        .cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .cam-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .cam-card img { width: 100%; display: block; }
+        .cam-card-label { font-size: 11px; padding: 6px 8px; color: var(--text); line-height: 1.35; background: var(--surface-2); }
+        .xai-plot-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .xai-plot-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .xai-plot-card img { width: 100%; display: block; }
+        .xai-plot-card-label { font-size: 11px; padding: 5px 8px; color: var(--text-muted); background: var(--surface-2); }
+
         /* ─── Utilities ─────────────────────────────────────────────────────────── */
         .hidden { display: none !important; }
         .hint-text { font-size: 12px; color: var(--text-muted); }
@@ -880,6 +892,8 @@
                                 aria-controls="panel-cls" onclick="switchTab('cls')">Classification</button>
                             <button class="tab-btn" id="tab-rep" role="tab" aria-selected="false"
                                 aria-controls="panel-rep" onclick="switchTab('rep')">Generated Report</button>
+                            <button class="tab-btn hidden" id="tab-xai" role="tab" aria-selected="false"
+                                aria-controls="panel-xai" onclick="switchTab('xai')">Explanations</button>
                             <button class="tab-btn hidden" id="tab-kgr" role="tab" aria-selected="false"
                                 aria-controls="panel-kgr" onclick="switchTab('kgr')">Study KG</button>
                         </div>
@@ -905,6 +919,11 @@
                                 <summary>Show raw model output</summary>
                                 <pre id="reportRaw" class="raw-report-pre"></pre>
                             </details>
+                        </div>
+
+                        <!-- Explanations (shown only when save_explainability checked) -->
+                        <div class="tab-panel" id="panel-xai" role="tabpanel" aria-labelledby="tab-xai">
+                            <div id="xaiContent"></div>
                         </div>
 
                         <!-- Study KG (shown only when subject_id + study_id provided) -->
@@ -1177,7 +1196,7 @@
 
             const t0 = performance.now();
             try {
-                const res = await fetch(`${url}/predict`, { method: "POST", body: form, signal: AbortSignal.timeout(120_000) });
+                const res = await fetch(`${url}/predict`, { method: "POST", body: form, signal: AbortSignal.timeout(300_000) });
 
                 if (!res.ok) {
                     let detail = `HTTP ${res.status}`;
@@ -1354,14 +1373,216 @@
 
             showInferenceResources(data.resources || null, data.processing_time_ms);
 
+            renderExplainability(data.explainability || null);
+
             const card = document.getElementById("resultsCard");
             card.classList.remove("hidden");
             switchTab("cls");
             requestAnimationFrame(() => { card.scrollIntoView({ behavior: "smooth", block: "start" }); document.getElementById("tab-cls").focus(); });
         }
 
+        // ── Explanations ──────────────────────────────────────────────────────────
+        function renderExplainability(xai) {
+            const tab  = document.getElementById("tab-xai");
+            const wrap = document.getElementById("xaiContent");
+            if (!xai) {
+                tab.classList.add("hidden");
+                wrap.innerHTML = "";
+                return;
+            }
+            tab.classList.remove("hidden");
+
+            const API = document.getElementById("apiUrl").value.trim().replace(/\/$/, "");
+            const _cb = Date.now();
+            const imgUrl = (path) => {
+                const base = path.startsWith("/") ? API + path : path;
+                return base + (base.includes("?") ? "&" : "?") + "_=" + _cb;
+            };
+
+            let html = "";
+
+            // ── Concept CAMs (per-concept inherent Cam_k) ─────────────────────────
+            const cams = xai.concept_cams || [];
+            if (cams.length) {
+                html += `<div class="xai-section-title">Inherent Concept Attention Maps (Camₖ)</div>`;
+                html += `<div class="cam-grid">`;
+                for (const cam of cams) {
+                    const src   = imgUrl(cam.path);
+                    const label = cam.concept_text || cam.label || cam.key || "";
+                    html += `<div class="cam-card">
+                        <img src="${escHtml(src)}" alt="${escHtml(label)}" loading="lazy" />
+                        <div class="cam-card-label">${escHtml(label)}</div>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
+            // ── Other plots from files dict ───────────────────────────────────────
+            const PLOT_ORDER = [
+                ["cross_attention_overlays", "Cross-Attention Overlays (all top concepts)"],
+                ["classification_scores",    "Classification Scores"],
+                ["concept_importance",       "KG Concept Importance"],
+                ["fusion_layer_head_attention", "Fusion Layer × Head Attention"],
+                ["fusion_query_patch_attention","Fusion Query → Patch Attention"],
+                ["graph_attention",          "GATv2 Edge Attention"],
+                ["gat_attention_vector",     "GATv2 Attention Vector"],
+                ["decoder_concepts",         "Decoder Token → Concept Attention"],
+                ["decoder_visual_overlays",  "Decoder Visual Overlays"],
+            ];
+            const files = xai.files || {};
+            const shownByCAM = new Set((cams || []).map(c => c.key));
+            const plotPairs = PLOT_ORDER.filter(([k]) => files[k] && !shownByCAM.has(k));
+            if (plotPairs.length) {
+                html += `<div class="xai-section-title">Analysis Plots</div>`;
+                html += `<div class="xai-plot-row">`;
+                for (const [key, title] of plotPairs) {
+                    const src = imgUrl(files[key]);
+                    html += `<div class="xai-plot-card">
+                        <img src="${escHtml(src)}" alt="${escHtml(title)}" loading="lazy" />
+                        <div class="xai-plot-card-label">${escHtml(title)}</div>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
+            // ── Input image ───────────────────────────────────────────────────────
+            if (files.input_image) {
+                html += `<div class="xai-section-title">Input Image (model view)</div>`;
+                html += `<div class="xai-plot-row"><div class="xai-plot-card">
+                    <img src="${escHtml(imgUrl(files.input_image))}" alt="Input CXR" loading="lazy" />
+                </div></div>`;
+            }
+
+            // ── Trace bundle viewer (async, loaded separately) ────────────────────
+            const studyKey = xai.study_key;
+            if (studyKey) {
+                html += `<div class="xai-section-title">Trace Bundle <span style="font-weight:400;font-size:11px;color:var(--text-muted)">(token → concept attention from trace_bundle.pt)</span></div>`;
+                html += `<div id="traceWrap"><p class="hint-text" id="traceStatus">Loading trace data…</p></div>`;
+            }
+
+            wrap.innerHTML = html || `<p style="color:var(--text-muted);font-size:13px;">No explainability data available. Enable the checkbox and re-run.</p>`;
+
+            if (studyKey) {
+                const API = document.getElementById("apiUrl").value.trim().replace(/\/$/, "");
+                fetch(`${API}/kg/trace/${encodeURIComponent(studyKey)}`, { signal: AbortSignal.timeout(30000) })
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(d => renderTraceBundle(d))
+                    .catch(e => {
+                        const el = document.getElementById("traceStatus");
+                        if (el) el.textContent = `Trace not available (${e}).`;
+                    });
+            }
+        }
+
+        function renderTraceBundle(d) {
+            const wrap = document.getElementById("traceWrap");
+            if (!wrap) return;
+
+            const tokens   = (d.generated_token_labels || []).map(t => t.replace(/^Ġ/, " ").replace(/^Ċ/, "↵"));
+            const nodes    = d.graph_node_texts || [];
+            const attn2d   = d.decoder_token_concept_attn || [];   // [tokens][concepts]
+            const weights  = d.concept_importance || [];
+            const topEdges = d.top_edges || [];
+
+            let html = "";
+
+            // ── Concept importance bar chart ──────────────────────────────────────
+            if (weights.length && nodes.length) {
+                const pairs = nodes.map((n, i) => ({n, w: weights[i] || 0}))
+                    .sort((a, b) => b.w - a.w).slice(0, 10);
+                const maxW = pairs[0].w || 1;
+                html += `<p class="xai-section-title" style="margin-top:0">Top KG Concepts by Pooling Weight</p>`;
+                html += `<div style="margin-bottom:14px;">`;
+                for (const {n, w} of pairs) {
+                    const pct = Math.round((w / maxW) * 100);
+                    const label = n.length > 60 ? n.slice(0, 58) + "…" : n;
+                    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <div style="font-size:11px;color:var(--text);width:260px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(n)}">${escHtml(label)}</div>
+                        <div style="flex:1;background:var(--border);border-radius:3px;height:10px;overflow:hidden;">
+                            <div style="width:${pct}%;background:#386641;height:100%;border-radius:3px;"></div>
+                        </div>
+                        <div style="font-size:10px;color:var(--text-muted);width:44px;text-align:right;">${w.toFixed(3)}</div>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
+            // ── Token → Concept heatmap ───────────────────────────────────────────
+            if (attn2d.length && nodes.length) {
+                const SHOW_TOKENS   = Math.min(attn2d.length, 40);
+                const SHOW_CONCEPTS = Math.min(nodes.length, 14);
+
+                // Find top concepts by total attention received
+                const conceptTotals = nodes.slice(0, SHOW_CONCEPTS).map((_, ci) =>
+                    attn2d.slice(0, SHOW_TOKENS).reduce((s, row) => s + (row[ci] || 0), 0)
+                );
+                const topConceptIdx = conceptTotals
+                    .map((v, i) => ({v, i}))
+                    .sort((a, b) => b.v - a.v)
+                    .slice(0, 10)
+                    .map(x => x.i);
+
+                const CELL = 18;
+                const LW   = 200;  // label width px
+                const tw   = topConceptIdx.length * CELL;
+
+                // Global max for colour scaling
+                let globalMax = 0;
+                for (let ti = 0; ti < SHOW_TOKENS; ti++)
+                    for (const ci of topConceptIdx)
+                        globalMax = Math.max(globalMax, attn2d[ti]?.[ci] || 0);
+                if (globalMax === 0) globalMax = 1;
+
+                const heatCell = (v) => {
+                    const alpha = Math.round((v / globalMax) * 200);
+                    return `background:rgba(158,42,43,${(alpha/255).toFixed(2)});`;
+                };
+
+                html += `<p class="xai-section-title">Decoder Token → KG Concept Attention</p>`;
+                html += `<div style="overflow-x:auto;margin-bottom:14px;"><table style="border-collapse:collapse;font-size:10px;">`;
+
+                // Header row — concept names
+                html += `<tr><th style="width:${LW}px;"></th>`;
+                for (const ci of topConceptIdx) {
+                    const cname = nodes[ci].split("(")[0].trim();
+                    html += `<th style="width:${CELL}px;writing-mode:vertical-rl;transform:rotate(180deg);max-height:90px;overflow:hidden;color:var(--text-muted);font-weight:500;padding:2px 1px;" title="${escHtml(nodes[ci])}">${escHtml(cname.slice(0, 14))}</th>`;
+                }
+                html += `</tr>`;
+
+                // Token rows
+                for (let ti = 0; ti < SHOW_TOKENS; ti++) {
+                    const tok = tokens[ti] || `t${ti}`;
+                    html += `<tr>`;
+                    html += `<td style="max-width:${LW}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 4px 1px 0;color:var(--text);font-family:monospace;" title="${escHtml(tok)}">${escHtml(tok.slice(0, 28))}</td>`;
+                    for (const ci of topConceptIdx) {
+                        const v = attn2d[ti]?.[ci] || 0;
+                        html += `<td style="width:${CELL}px;height:${CELL}px;${heatCell(v)}" title="${nodes[ci]}: ${v.toFixed(4)}"></td>`;
+                    }
+                    html += `</tr>`;
+                }
+                html += `</table></div>`;
+            }
+
+            // ── Top GATv2 edges ───────────────────────────────────────────────────
+            if (topEdges.length) {
+                html += `<p class="xai-section-title">Top GATv2 Attention Edges</p>`;
+                html += `<div style="overflow-x:auto;margin-bottom:12px;"><table style="border-collapse:collapse;font-size:11px;width:100%;">`;
+                html += `<tr style="background:var(--surface-2);"><th style="padding:4px 8px;text-align:left;color:var(--text-muted);">Source</th><th style="padding:4px 8px;text-align:left;color:var(--text-muted);">Target</th><th style="padding:4px 8px;text-align:right;color:var(--text-muted);">Score</th></tr>`;
+                for (const e of topEdges.slice(0, 12)) {
+                    html += `<tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:3px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(e.src)}</td>
+                        <td style="padding:3px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(e.dst)}</td>
+                        <td style="padding:3px 8px;text-align:right;font-variant-numeric:tabular-nums;">${e.score.toFixed(4)}</td>
+                    </tr>`;
+                }
+                html += `</table></div>`;
+            }
+
+            wrap.innerHTML = html || `<p class="hint-text">Trace data loaded but no interactive views available.</p>`;
+        }
+
         // ── Tabs ───────────────────────────────────────────────────────────────────
-        const RESULT_TABS = ["cls", "rep", "kgr"];
+        const RESULT_TABS = ["cls", "rep", "xai", "kgr"];
 
         function switchTab(id) {
             RESULT_TABS.forEach(t => {

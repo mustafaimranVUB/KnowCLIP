@@ -167,6 +167,7 @@ class ExplainabilityExporter:
         top_concepts = self._save_concept_importance(sample, sample_dir)
         self._save_visual_pooling_overlay(sample, sample_dir, image_np)
         self._save_cross_attention_overlays(sample, sample_dir, image_np, top_concepts)
+        concept_cams = self._save_concept_cam_overlays(sample, sample_dir, image_np, top_concepts)
         fusion_summary = self._save_fusion_activation_summaries(sample, sample_dir, top_concepts)
         top_edges = self._save_graph_attention(sample, sample_dir)
         self._save_attention_vector(sample, sample_dir)
@@ -193,6 +194,7 @@ class ExplainabilityExporter:
             "sample_dir": str(sample_dir),
             "top_pathologies": top_pathologies,
             "top_concepts": top_concepts,
+            "concept_cams": concept_cams,
             "fusion_summary": fusion_summary.get("stats", {}),
             "top_edges": top_edges,
             "reference_report": sample.reference_report,
@@ -210,6 +212,12 @@ class ExplainabilityExporter:
 
         for key, value in fusion_summary.get("files", {}).items():
             summary["files"][key] = str(value)
+
+        # Register every PNG in the sample directory so the API can encode them all.
+        for png_path in sorted(sample_dir.glob("*.png")):
+            key = png_path.stem
+            if key not in summary["files"]:
+                summary["files"][key] = str(png_path)
 
         summary_md = sample_dir / "summary.md"
         self._write_summary_markdown(sample, summary, summary_md)
@@ -352,6 +360,106 @@ class ExplainabilityExporter:
         output_path = sample_dir / "cross_attention_overlays.png"
         fig.savefig(output_path, dpi=200, bbox_inches="tight")
         plt.close(fig)
+
+    def _save_concept_cam_overlays(
+        self,
+        sample: ExplainabilitySample,
+        sample_dir: Path,
+        image_np: np.ndarray,
+        top_concepts: List[Dict[str, float]],
+        top_k: int = 8,
+    ) -> List[Dict[str, str]]:
+        """Save one inherent Cam_k overlay per top concept (matches thesis Figure 3.6 style).
+
+        Uses cross-attention weights from the fusion layer (not a post-hoc gradient method).
+        Each output is saved as cam_{slug}.png and also registered in summary["files"].
+        """
+        fusion = sample.explainability.get("fusion")
+        if not isinstance(fusion, dict) or not top_concepts:
+            return []
+        last_layer = fusion.get("last_layer")
+        if not isinstance(last_layer, torch.Tensor) or last_layer.ndim != 4:
+            return []
+
+        # [batch, heads, K_concepts, P_patches] → avg over batch+heads → [K, P]
+        attn = last_layer.detach().cpu()[0].mean(dim=0)
+
+        h, w = image_np.shape[:2]
+        side = int(math.isqrt(attn.shape[1]))  # 14 for 196 patches
+
+        # Render on grayscale background (cleaner for heatmap overlay)
+        gray = np.mean(image_np, axis=2)
+        gray_rgb = np.stack([gray, gray, gray], axis=2)
+
+        cam_files: List[Dict[str, str]] = []
+
+        for concept in top_concepts[:top_k]:
+            concept_index = int(concept["index"])
+            if concept_index >= attn.shape[0]:
+                continue
+            heatmap = _reshape_patch_map(attn[concept_index])
+            if heatmap is None:
+                continue
+
+            # Normalize to [0, 1]
+            hm_min, hm_max = float(heatmap.min()), float(heatmap.max())
+            if hm_max > hm_min:
+                heatmap = (heatmap - hm_min) / (hm_max - hm_min)
+            else:
+                continue  # uniform attention — skip
+
+            concept_text = concept["label"].split("(")[0].strip()
+            slug = _slugify(concept_text)[:48]
+            file_key = f"cam_{slug}"
+
+            fig, ax = plt.subplots(figsize=(5, 5), constrained_layout=True)
+            ax.imshow(gray_rgb)
+            ax.imshow(
+                heatmap,
+                cmap="Reds",
+                alpha=0.60,
+                interpolation="bilinear",
+                vmin=0,
+                vmax=1,
+                extent=[0, w, h, 0],
+            )
+
+            # Patch grid lines (same as thesis figure)
+            for i in range(1, side):
+                ax.axvline(x=i * w / side, color="white", linewidth=0.35, alpha=0.45)
+                ax.axhline(y=i * h / side, color="white", linewidth=0.35, alpha=0.45)
+
+            # Dashed bounding box around the hot region (≥ 0.5 normalised)
+            hot = np.argwhere(heatmap >= 0.5)
+            if len(hot) >= 2:
+                r_min, c_min = hot.min(axis=0)
+                r_max, c_max = hot.max(axis=0)
+                rx = c_min * w / side
+                ry = r_min * h / side
+                rw = (c_max - c_min + 1) * w / side
+                rh = (r_max - r_min + 1) * h / side
+                rect = plt.Rectangle(
+                    (rx, ry), rw, rh,
+                    linewidth=1.6, edgecolor="white", facecolor="none",
+                    linestyle="--", alpha=0.85,
+                )
+                ax.add_patch(rect)
+
+            ax.set_title(f"Cam$_k$: {concept_text}", fontsize=11)
+            ax.axis("off")
+
+            out_path = sample_dir / f"{file_key}.png"
+            fig.savefig(out_path, dpi=200, bbox_inches="tight")
+            plt.close(fig)
+
+            cam_files.append({
+                "label": concept["label"],
+                "concept_text": concept_text,
+                "key": file_key,
+                "path": str(out_path),
+            })
+
+        return cam_files
 
     def _save_fusion_activation_summaries(
         self,

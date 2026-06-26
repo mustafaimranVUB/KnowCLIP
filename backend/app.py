@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # Optional system-monitoring deps — degrade gracefully if absent.
 try:
@@ -101,6 +102,52 @@ app.add_middleware(
 )
 
 app.include_router(kg_router)
+
+# Serve explainability PNGs directly — mounted after router so /kg/* takes priority.
+# The directory is created lazily on first inference; mount fails gracefully if absent.
+_XAI_DIR = Path("inference_explainability")
+_XAI_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/explainability", StaticFiles(directory=str(_XAI_DIR), html=False), name="explainability")
+
+
+@app.middleware("http")
+async def _no_cache_xai(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/explainability/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _local_path_to_xai_url(path_str: str) -> str:
+    """Convert a local explainability file path to its /explainability/... URL.
+
+    Finds the inference_explainability segment and strips everything before it.
+    e.g. D:/KnoClip/.../inference_explainability/10000032_50414267/cam_x.png
+         → /explainability/10000032_50414267/cam_x.png
+    """
+    parts = Path(path_str).parts
+    try:
+        idx = next(i for i, p in enumerate(parts) if p == _XAI_DIR.name)
+        return "/explainability/" + "/".join(parts[idx + 1:])
+    except StopIteration:
+        return path_str  # not under the XAI dir; return unchanged
+
+
+def _xai_paths_to_urls(summary: Any) -> Any:
+    """Recursively replace local .png file paths with /explainability/... URLs."""
+    if isinstance(summary, dict):
+        out: Dict[str, Any] = {}
+        for k, v in summary.items():
+            if isinstance(v, str) and v.endswith(".png"):
+                out[k] = _local_path_to_xai_url(v)
+            elif isinstance(v, (dict, list)):
+                out[k] = _xai_paths_to_urls(v)
+            else:
+                out[k] = v
+        return out
+    if isinstance(summary, list):
+        return [_xai_paths_to_urls(item) for item in summary]
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +292,24 @@ async def startup_event() -> None:
                 )
         except Exception as _thr_exc:  # noqa: BLE001
             logger.warning("Threshold loading skipped: %s", _thr_exc)
+        # Eagerly build the model + load checkpoint at startup so the first
+        # /predict request is not delayed by model construction.
+        logger.info("Pre-loading model onto %s (this may take ~30 s)...", _device_str)
+        _pipeline._prepare_model(checkpoint)
+
+        # Share the report_graphs cache with the KG API so report_graphs.pt is
+        # only loaded once (it's ~17 GB — loading it twice would waste 34 GB RAM).
+        try:
+            from backend.kg_api import _report_graphs_lock as _kg_rg_lock  # noqa: PLC0415
+            import backend.kg_api as _kg_api_mod  # noqa: PLC0415
+            if _pipeline._report_graphs_loaded and _pipeline._report_graphs is not None:
+                with _kg_rg_lock:
+                    _kg_api_mod._report_graphs = _pipeline._report_graphs
+                    _kg_api_mod._report_graphs_loaded = True
+                logger.info("Shared report_graphs cache with KG API.")
+        except Exception as _share_exc:  # noqa: BLE001
+            logger.debug("Could not share report_graphs cache: %s", _share_exc)
+
         logger.info(
             "KnoCLIP-XAI API ready | device=%s | config=%s | checkpoint=%s",
             _device_str,
@@ -429,10 +494,11 @@ async def predict(
         except Exception:  # noqa: BLE001
             pass
 
+        xai = result.get("explainability")
         response_body: Dict[str, Any] = {
             "classification": result.get("classification", {}),
             "generated_report": result.get("generated_report", ""),
-            "explainability": result.get("explainability", None),
+            "explainability": _xai_paths_to_urls(xai) if xai else None,
             "image_filename": original_filename,
             "processing_time_ms": round(elapsed_ms, 2),
             "thresholds": _thresholds,

@@ -42,3 +42,20 @@ documents/
 
 notebooks/
 
+# Inference / explainability outputs
+inference_explainability/
+
+# Test images — keep the fetch scripts, ignore downloaded images
+test_images/*.jpg
+test_images/*.png
+test_images/*.jpeg
+test_images/p*/
+test_images/mimic_*/
+
+# Training logs (literal dir named ${LOG_DIR} and any .log files)
+${LOG_DIR}/
+*.log
+
+# Understand-anything analysis cache
+.understand-anything/
+understand-anything/

@@ -33,6 +33,11 @@ _kg_artifact_dir: Optional[Path] = None
 _kg_available: bool = False
 _kg_load_error: str = ""
 
+# Cache for report_graphs.pt (loaded once, reused for all per-study KG requests)
+_report_graphs_lock = threading.Lock()
+_report_graphs: Any = None
+_report_graphs_loaded: bool = False
+
 
 def _get_configured_dir() -> Optional[Path]:
     raw = os.environ.get("KG_ARTIFACTS_DIR", "").strip()
@@ -263,14 +268,26 @@ def kg_study_graph(subject_id: int, study_id: int) -> JSONResponse:
     study_key = f"{subject_id}_{study_id}"
     try:
         import torch
-        from kg_viewer.app import (  # noqa: PLC0415
-            ensure_cached_study_graph,
-            build_graph_index,
-            load_summary,
-        )
+        from kg_viewer.app import build_graph_index, load_summary  # noqa: PLC0415
 
-        cache_path = ensure_cached_study_graph(_kg_artifact_dir, study_key)
-        study_graph = torch.load(cache_path, map_location="cpu", weights_only=False)
+        # Load report_graphs.pt once and cache it — bypasses the missing
+        # scripts/visualize_kg.py subprocess that ensure_cached_study_graph uses.
+        global _report_graphs, _report_graphs_loaded
+        if not _report_graphs_loaded:
+            with _report_graphs_lock:
+                if not _report_graphs_loaded:
+                    report_graphs_path = _kg_artifact_dir / "report_graphs.pt"
+                    logger.info("Loading report_graphs.pt for study KG endpoint...")
+                    _report_graphs = torch.load(
+                        report_graphs_path, map_location="cpu", weights_only=False
+                    )
+                    _report_graphs_loaded = True
+                    logger.info("report_graphs.pt cached (%d studies).", len(_report_graphs))
+
+        study_graph = _report_graphs.get(study_key) if _report_graphs else None
+        if study_graph is None:
+            raise KeyError(study_key)
+
         index = build_graph_index(
             graph=study_graph,
             artifact_dir=_kg_artifact_dir,
@@ -291,4 +308,113 @@ def kg_study_graph(subject_id: int, study_id: int) -> JSONResponse:
 
     result = _graph_index_to_vis_json(index, max_nodes=150, max_edges=400)
     result["study_key"] = study_key
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Trace bundle viewer
+# ---------------------------------------------------------------------------
+
+_XAI_DIR = Path("inference_explainability")
+
+
+@router.get("/trace/{study_key}")
+def kg_trace_data(study_key: str) -> JSONResponse:
+    """Load trace_bundle.pt for a study and return JSON-serialisable attention data.
+
+    Used by the frontend to render the interactive token-concept attention heatmap.
+    """
+    import torch  # noqa: PLC0415
+
+    bundle_path = _XAI_DIR / study_key / "trace_bundle.pt"
+    if not bundle_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"trace_bundle.pt not found for study {study_key}. Run inference with explainability enabled.",
+        )
+
+    try:
+        bundle = torch.load(bundle_path, map_location="cpu", weights_only=False)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load trace bundle: {exc}") from exc
+
+    result: Dict[str, Any] = {"study_key": study_key}
+
+    # ── Token labels & classification ────────────────────────────────────────
+    result["generated_token_labels"] = list(bundle.get("generated_token_labels", []))
+    result["graph_node_texts"]       = list(bundle.get("graph_node_texts", []))
+    result["graph_node_types"]       = list(bundle.get("graph_node_types", []))
+    result["graph_node_certainties"] = list(bundle.get("graph_node_certainties", []))
+
+    probs = bundle.get("classification_probs")
+    if isinstance(probs, torch.Tensor):
+        result["classification_probs"] = probs.detach().cpu().tolist()
+
+    exp = bundle.get("explainability", {})
+    if not isinstance(exp, dict):
+        return JSONResponse(result)
+
+    # ── Decoder token-to-concept attention ──────────────────────────────────
+    # Shape: list of [batch, heads, seq_len, num_queries+num_patches]
+    decoder = exp.get("decoder", {})
+    if isinstance(decoder, dict):
+        per_layer = decoder.get("per_layer", [])
+        layer_tensors = [
+            layer.detach().cpu()
+            for layer in per_layer
+            if isinstance(layer, torch.Tensor) and layer.ndim == 4
+        ]
+        if layer_tensors:
+            stacked = torch.stack([layer[0] for layer in layer_tensors], dim=0).mean(dim=(0, 1))
+            concept_count = len(result["graph_node_texts"])
+            concept_attn = stacked[:, :concept_count]  # [seq, concepts]
+            result["decoder_token_concept_attn"] = concept_attn.tolist()
+
+    # ── Pooling weights (concept importance) ────────────────────────────────
+    pooling = exp.get("pooling", {})
+    if isinstance(pooling, dict):
+        weights = pooling.get("weights")
+        mask    = pooling.get("mask")
+        if isinstance(weights, torch.Tensor):
+            w = weights.detach().cpu()
+            if w.ndim == 2:
+                w = w[0]
+            if isinstance(mask, torch.Tensor):
+                m = mask.detach().cpu()
+                if m.ndim == 2:
+                    m = m[0]
+                w = w[:int(m.sum().item())]
+            concept_count = len(result["graph_node_texts"])
+            result["concept_importance"] = w[:concept_count].tolist()
+
+    # ── GATv2 top edges (last layer) ────────────────────────────────────────
+    graph = exp.get("graph", {})
+    if isinstance(graph, dict):
+        layers = graph.get("edge_attention_layers", [])
+        if layers:
+            last = layers[-1]
+            edge_index = last.get("edge_index")
+            alpha      = last.get("alpha")
+            edge_type  = last.get("edge_type")
+            if isinstance(edge_index, torch.Tensor) and isinstance(alpha, torch.Tensor):
+                ei = edge_index.detach().cpu()
+                al = alpha.detach().cpu()
+                scores = al.mean(dim=-1) if al.ndim > 1 else al
+                top_k  = min(20, int(scores.numel()))
+                top_idx = torch.topk(scores, k=top_k).indices.tolist()
+                node_texts = result["graph_node_texts"]
+                et_cpu = edge_type.detach().cpu() if isinstance(edge_type, torch.Tensor) else None
+                edges: List[Dict[str, Any]] = []
+                for idx in top_idx:
+                    src = int(ei[0, idx])
+                    dst = int(ei[1, idx])
+                    rel = int(et_cpu[idx].item()) if et_cpu is not None and idx < et_cpu.numel() else -1
+                    edges.append({
+                        "src": node_texts[src] if src < len(node_texts) else f"node_{src}",
+                        "dst": node_texts[dst] if dst < len(node_texts) else f"node_{dst}",
+                        "relation": rel,
+                        "score": float(scores[idx]),
+                    })
+                result["top_edges"] = edges
+
     return JSONResponse(result)
